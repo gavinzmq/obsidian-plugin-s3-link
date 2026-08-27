@@ -1,7 +1,11 @@
 import { TFile } from "obsidian";
 import Cache from "./cache";
 import Config from "./config";
-import { getCacheFileName, getVaultResourcePath } from "./obsidianHelper";
+import {
+    getCacheFileName,
+    getCacheFileUrl,
+    getVaultResourcePath,
+} from "./obsidianHelper";
 import { PluginSettings, resolveSourceKey } from "./settings/settings";
 import ImageResolver from "./resolver/imageResolver";
 import VideoResolver from "./resolver/videoResolver";
@@ -351,18 +355,50 @@ export class S3PostProcessor {
         // discard our element reference) before the resource path is set.
         for (const htmlElement of htmlElements) {
             if (htmlElement instanceof HTMLImageElement) {
-                htmlElement.src = await this.getResourcePath(
+                const resourcePath = await this.getResourcePath(
                     resource,
                     sourceId,
                     objectKey
                 );
+                htmlElement.src = resourcePath;
+
+                // If Obsidian's resource server cannot serve the cache file
+                // (e.g. it was written with raw streams and is not resolvable),
+                // fall back to a direct file:// URL that the renderer can
+                // always load from disk.
+                if (resource instanceof S3Link) {
+                    htmlElement.addEventListener(
+                        "error",
+                        () => {
+                            htmlElement.src = getCacheFileUrl(
+                                resource.objectKey,
+                                resource.versionToken
+                            );
+                        },
+                        { once: true }
+                    );
+                }
             } else if (htmlElement instanceof HTMLVideoElement) {
                 htmlElement.autoplay = false;
-                htmlElement.src = await this.getResourcePath(
+                const resourcePath = await this.getResourcePath(
                     resource,
                     sourceId,
                     objectKey
                 );
+                htmlElement.src = resourcePath;
+
+                if (resource instanceof S3Link) {
+                    htmlElement.addEventListener(
+                        "error",
+                        () => {
+                            htmlElement.src = getCacheFileUrl(
+                                resource.objectKey,
+                                resource.versionToken
+                            );
+                        },
+                        { once: true }
+                    );
+                }
             } else if (htmlElement instanceof HTMLSpanElement) {
                 htmlElement.setAttribute(
                     "src",

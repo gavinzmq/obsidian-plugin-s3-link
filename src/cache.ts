@@ -112,16 +112,36 @@ export default class Cache {
                 this.removeOpenStream(writeStream);
 
                 // Raw fs writes are not tracked by the vault index, so verify
-                // the file landed on disk and log its size to spot empty or
-                // partial downloads early.
+                // the file landed on disk, log its size and the leading bytes.
+                // The header identifies the real content (e.g. "ffd8ff..." for
+                // a JPEG) and reveals whether a download returned an error page
+                // instead of the actual object.
                 const stat = await fs.promises
                     .stat(objectPath)
                     .catch(() => null);
 
+                let header = "";
+                if (stat && stat.size > 0) {
+                    const handle = await fs.promises
+                        .open(objectPath, "r")
+                        .catch(() => null);
+
+                    if (handle) {
+                        const buffer = Buffer.alloc(16);
+                        await handle
+                            .read(buffer, 0, 16, 0)
+                            .catch(() => null);
+                        await handle.close().catch(() => null);
+                        header = buffer
+                            .subarray(0, Math.min(stat.size, 16))
+                            .toString("hex");
+                    }
+                }
+
                 console.debug(
                     `${this.moduleName}: Saved ${fileName} to cache folder (${
                         stat ? stat.size : 0
-                    } bytes)`
+                    } bytes, header: ${header || "n/a"})`
                 );
 
                 resolve();

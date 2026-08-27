@@ -70,7 +70,7 @@ export async function getVaultResourcePath(
                     );
                 }
 
-                // Last resort: a file:// URL that the renderer can always load
+                // Fall back to a file:// URL that the renderer can always load
                 // directly from disk, even when the vault index has not picked
                 // the file up.
                 const fileUrl = adapter.getFilePath(filePath);
@@ -88,7 +88,31 @@ export async function getVaultResourcePath(
         throw new Error("Invalid argument");
     }
 
-    return app.vault.getResourcePath(loadedFile);
+    const resourcePath = app.vault.getResourcePath(loadedFile);
+    console.debug(`Resolved cached file via vault resource path: ${resourcePath}`);
+    return resourcePath;
+}
+
+/**
+ * Returns a direct file:// URL for a cached object. This bypasses Obsidian's
+ * resource server entirely, so it can be used as a fallback when the vault
+ * cannot serve a raw-stream-written cache file.
+ *
+ * @param objectKey the object key
+ * @param versionToken the version token
+ *
+ * @returns the file:// URL of the cached file
+ */
+export function getCacheFileUrl(
+    objectKey: string,
+    versionToken: string
+): string {
+    const filePath = `${Config.CACHE_FOLDER}/${getCacheFileName(
+        objectKey,
+        versionToken
+    )}`;
+
+    return (app.vault.adapter as FileSystemAdapter).getFilePath(filePath);
 }
 
 /**
