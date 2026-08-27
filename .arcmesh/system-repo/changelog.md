@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-27 — 版本号 1.0.9
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.9`
+- 打标签 `v1.0.9` 并发布（含日志级别设置，控制开发者控制台输出量）
+
+## 2026-08-27 — 新增日志级别设置（DEBUG / INFO / WARN / ERROR / NONE）
+
+- 新增 `src/logger.ts`（`Logger` + `LogLevel`）：所有插件日志统一走 Logger，按级别过滤输出；默认 `INFO`
+- 设置界面新增「日志级别」下拉框（Debug/Info/Warning/Error/None），中英文案已补充
+- 全部 17 个源文件约 100 处 `console.debug/info/warn/error` 改为 `Logger.*`（`logger.ts` 内部仍调用原生 console）
+- `main.ts` 加载/保存设置时应用日志级别
+- 默认级别 `INFO` 会隐藏大量每次渲染产生的 debug 消息；排查问题时可切到 `Debug`
+- 新增 Logger 单元测试 6 例；jest 8 套件 57 用例通过
+
 ## 2026-08-27 — 版本号 1.0.8
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.8`
