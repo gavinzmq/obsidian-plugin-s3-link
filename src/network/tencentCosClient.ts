@@ -60,7 +60,16 @@ export class TencentCosClient implements StorageClient {
 
         return new Promise((resolve, reject) => {
             this.cos.getObject(
-                { Bucket: this.bucket, Region: this.region, Key: objectKey },
+                {
+                    Bucket: this.bucket,
+                    Region: this.region,
+                    Key: objectKey,
+                    // The browser SDK decodes the response as a UTF-8 string by
+                    // default (DataType: "text"), which corrupts binary objects
+                    // (invalid bytes become U+FFFD replacement characters).
+                    // Request a Blob so image data is preserved byte-for-byte.
+                    DataType: "blob",
+                },
                 (err: unknown, data: any) => {
                     if (err) {
                         downloadManager.setErrorState(
