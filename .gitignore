@@ -24,6 +24,3 @@ data.json
 
 # jest
 coverage/
-
-# arcmesh (local system repo - not version-controlled)
-.arcmesh/
