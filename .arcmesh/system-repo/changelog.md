@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-27 — Release 工作流加入手动触发
+
+- `release.yaml` 增加 `workflow_dispatch` 手动触发（需输入版本标签，如 `v1.0.1`），用于诊断"标签推送未触发"问题与手动发布
+- 标签提取逻辑兼容手动触发输入
+
 ## 2026-08-27 — 版本号 1.0.1
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.1`
