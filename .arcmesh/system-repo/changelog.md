@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-27 — Release 工作流修复
+
+- 修复 `.github/workflows/release.yaml`：补充 `permissions: contents: write`（否则默认只读 token 无法建 Release）
+- 升级 `actions/checkout@v4`（v3 已弃用）
+- 发布资源补充 `versions.json`（Obsidian 插件发布必需，含 minAppVersion 映射）
+- tag 触发模式由 `**` 收敛为 `v*`（匹配 README 的 `vx.x.x` 约定）
+- 移除会与标签提取逻辑冲突的 `workflow_dispatch` 手动触发
+
 ## 2026-08-27 — 多对象存储支持实现
 
 - 实现 `decisions/2026-08-27-multi-cloud-storage-support.md`：`StorageClient` 接口 + `S3CompatibleClient` / `TencentCosClient` / `AliyunOssClient` + `StorageClientFactory`
