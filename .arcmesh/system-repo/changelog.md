@@ -1,38 +1,33 @@
 # Changelog
 
+## 2026-08-27 — 自动替换远程链接功能
+
+- 新增 `src/autoReplace.ts`：用正则匹配已配置存储源的 `https://` 链接（AWS / 腾讯 COS / 阿里 OSS / S3 兼容，虚拟主机与路径两种寻址），替换为插件 `s3:` 格式链接（默认源无前缀，非默认源带 `sourceName/` 前缀）；跳过 fenced 代码块
+- 新增 `src/main.ts` vault 监听：`vault.on("modify"/"create")`，当 `autoReplaceEnabled` 开启时自动重写 md 文件；`isAutoReplaceProcessing` 防递归
+- 设置 UI 新增「自动替换远程链接」开关（`PluginSettings.autoReplaceEnabled`，默认关）
+- i18n 新增 en/zh 文案；新增 `test/autoReplace.test.ts`（9 用例）
+- 验证：tsc / jest（7 套件 44 用例）/ eslint / esbuild 全部通过
+- 更新 `architecture.md`、`project.md`
+
 ## 2026-08-27 — 版本号 1.0.2
 
-- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.2`
-- 打标签 `v1.0.2` 并发布（含多对象存储与 UI 增强）
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.2`；打标签 `v1.0.2` 发布
 
 ## 2026-08-27 — UI 增强（Provider 下拉 / 端点自动组合 / 测试连接 / 多语言）
 
-- 设置 UI：Provider 改为**下拉选择**（aws / tencent-cos / aliyun-oss / s3-compatible）
-- Endpoint：已知服务商（AWS / 腾讯 COS / 阿里 OSS）按 Region **自动组合生成**且 UI 不显示输入框；仅 S3 兼容源显示自定义端点输入
-- 新增「**测试连接**」：`StorageClient` 增加 `testConnection()`（AWS: ListObjectsV2 / COS: getBucket / OSS: list）
-- 新增**语言选择**：`src/i18n.ts` 支持中文/英文，设置 UI 随语言实时切换；`PluginSettings.language`
-- `settings.ts` 新增 `getComposedEndpoint` / `isKnownProvider`
-- 更新 `architecture.md`、`decisions/...`（§7 设计修订）、`project.md`
+- Provider 下拉；已知服务商端点按 Region 自动组合且不显示输入框；S3 兼容源显示自定义端点
+- `StorageClient.testConnection()` + 设置页「测试连接」按钮
+- `src/i18n.ts` 中/英文界面；`PluginSettings.language`
 
-## 2026-08-27 — Release 工作流加入手动触发
+## 2026-08-27 — Release 工作流修复 / 手动触发
 
-- `release.yaml` 增加 `workflow_dispatch` 手动触发（需输入版本标签）
-- 标签提取逻辑兼容手动触发输入
-
-## 2026-08-27 — 版本号 1.0.1
-
-- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.1`
-
-## 2026-08-27 — Release 工作流修复
-
-- 修复 `.github/workflows/release.yaml`：`permissions: contents: write`、`actions/checkout@v4`、发布资源补充 `versions.json`、tag 模式 `v*`
+- `release.yaml`：`permissions`、`checkout@v4`、`versions.json`、tag 模式 `v*`、`workflow_dispatch`
 
 ## 2026-08-27 — 多对象存储支持实现
 
-- 实现多存储：`StorageClient` + 三适配器 + 工厂；多源设置模型；缓存 versionToken 改造；`src/aws/` 下线
+- `StorageClient` + 三适配器 + 工厂；多源设置模型；缓存 versionToken 改造；`src/aws/` 下线
 - 新增依赖：`cos-nodejs-sdk-v5`、`ali-oss`
-- 测试 6 套件 / 35 用例通过
 
-## 2026-08-27 — 多对象存储支持设计 / .arcmesh 纳入版本控制 / 初始文档
+## 2026-08-27 — 设计 / .arcmesh / 初始文档
 
-- 设计决策、`.arcmesh` 入库（排除敏感文件）、架构文档与项目文档初始化
+- 设计决策、`.arcmesh` 入库（排除敏感文件）、架构与项目文档初始化

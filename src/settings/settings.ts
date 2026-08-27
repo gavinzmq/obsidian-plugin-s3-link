@@ -20,11 +20,13 @@ export interface StorageSource {
 export interface PluginSettings {
     sources: StorageSource[];
     language: Language;
+    autoReplaceEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
     sources: [],
     language: "en",
+    autoReplaceEnabled: false,
 };
 
 /**
@@ -88,7 +90,7 @@ export function migrateLegacySettings(
         signLinkEnabled: true,
     };
 
-    return { sources: [source], language: "en" };
+    return { sources: [source], language: "en", autoReplaceEnabled: false };
 }
 
 /**

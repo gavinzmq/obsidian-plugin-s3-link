@@ -1,4 +1,4 @@
-import { Plugin } from "obsidian";
+import { Plugin, TAbstractFile, TFile } from "obsidian";
 import Config from "./config";
 import Cache from "./cache";
 import { S3PostProcessor } from "./s3PostProcessor";
@@ -20,6 +20,7 @@ import ClearCacheLocalCommand from "./command/clearCacheLocalCommand";
 import ReloadActiveLeafCommand from "./command/reloadActiveLeafCommand";
 import ReloadAllLeafsCommand from "./command/reloadAllLeafsCommand";
 import DownloadManager from "./network/downloadManager";
+import { replaceRemoteUrls } from "./autoReplace";
 
 export default class S3LinkPlugin extends Plugin {
     private readonly moduleName = "Main";
@@ -28,6 +29,7 @@ export default class S3LinkPlugin extends Plugin {
     pluginState: PluginState;
     statusBar: StatusBar;
     s3PostProcessor: S3PostProcessor;
+    private isAutoReplaceProcessing = false;
 
     async onload() {
         console.info(
@@ -49,6 +51,7 @@ export default class S3LinkPlugin extends Plugin {
 
         this.setupMarkdownPostProcessor(this.cache);
         this.addPluginCommands(this);
+        this.registerVaultListeners();
 
         if (isPluginReadyState(this.settings)) {
             this.setState(PluginState.READY);
@@ -114,6 +117,66 @@ export default class S3LinkPlugin extends Plugin {
         new ClearCacheLocalCommand().addCommand(plugin);
         new ReloadActiveLeafCommand().addCommand(plugin);
         new ReloadAllLeafsCommand().addCommand(plugin);
+    }
+
+    /**
+     * Registers vault listeners used for the optional auto-replace feature
+     * (replace https:// URLs matching configured sources with s3: links).
+     */
+    private registerVaultListeners() {
+        this.registerEvent(
+            this.app.vault.on("modify", (file: TAbstractFile) =>
+                this.onFileModified(file)
+            )
+        );
+        this.registerEvent(
+            this.app.vault.on("create", (file: TAbstractFile) =>
+                this.onFileModified(file)
+            )
+        );
+    }
+
+    /**
+     * Called when a vault file is created or modified. When the auto-replace
+     * toggle is enabled it rewrites matching https:// URLs to s3: links.
+     * A guard prevents recursive processing of the rewritten file.
+     *
+     * @param file the affected file
+     */
+    private async onFileModified(file: TAbstractFile) {
+        if (!(file instanceof TFile)) {
+            return;
+        }
+
+        if (!this.settings.autoReplaceEnabled) {
+            return;
+        }
+
+        if (file.extension !== "md") {
+            return;
+        }
+
+        if (this.isAutoReplaceProcessing) {
+            return;
+        }
+
+        this.isAutoReplaceProcessing = true;
+
+        try {
+            const content = await this.app.vault.read(file);
+            const replaced = replaceRemoteUrls(
+                content,
+                this.settings.sources
+            );
+
+            if (replaced !== content) {
+                await this.app.vault.modify(file, replaced);
+            }
+        } catch (error) {
+            console.error("Failed to auto-replace remote URLs", error);
+        } finally {
+            this.isAutoReplaceProcessing = false;
+        }
     }
 
     /**

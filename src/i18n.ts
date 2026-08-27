@@ -57,6 +57,10 @@ const translations: Record<Language, Dictionary> = {
         testConnection: "Test Connection",
         testSuccess: "Connection successful",
         testFailed: "Connection failed - check settings and credentials",
+
+        autoReplace: "Auto-replace remote URLs",
+        autoReplaceDesc:
+            "Watch for document changes and replace https:// URLs matching configured storage sources with s3: links.",
     },
     zh: {
         language: "语言",
@@ -102,6 +106,10 @@ const translations: Record<Language, Dictionary> = {
         testConnection: "测试连接",
         testSuccess: "连接成功",
         testFailed: "连接失败 - 请检查设置与凭证",
+
+        autoReplace: "自动替换远程链接",
+        autoReplaceDesc:
+            "监听文档变化，将匹配已配置存储源的 https:// 链接自动替换为 s3: 格式链接。",
     },
 };
 

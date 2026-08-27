@@ -33,6 +33,18 @@ export class PluginSettingsTab extends PluginSettingTab {
 
         containerEl.createEl("p", { text: t("settingsIntro") });
 
+        new Setting(containerEl)
+            .setName(t("autoReplace"))
+            .setDesc(t("autoReplaceDesc"))
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.autoReplaceEnabled)
+                    .onChange(async (value) => {
+                        this.plugin.settings.autoReplaceEnabled = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
         const sources = this.plugin.settings.sources;
 
         if (sources.length === 0) {
