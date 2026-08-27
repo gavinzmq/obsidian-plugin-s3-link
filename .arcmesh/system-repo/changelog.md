@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-27 — 版本号 1.0.8
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.8`
+- 打标签 `v1.0.8` 并发布（含腾讯云 COS 二进制下载损坏修复）
+
+## 2026-08-27 — 修复腾讯云 COS 二进制下载损坏（图片显示错误图标）
+
+- 现象：文件能下载保存（`Saved ... (182911 bytes)`）且资源路径解析成功（`Resolved ... via vault resource path`），但图片仍显示错误图标
+- 根因（据文件头确证）：缓存文件头为 `efbfbd efbfbd efbfbd efbfbd 0010 4a46` —— `efbfbd` 是 UTF-8 替换字符 U+FFFD，对应原始 JPEG 头 `ff d8 ff e0 00 10 4a 46 49 46`（JFIF）。浏览器版 COS SDK `getObject` 默认 `DataType: 'text'`，把二进制对象按 UTF-8 文本解码，无效字节全部变为 U+FFFD → 图片损坏
+- 修复：`TencentCosClient.getObject` 增加 `DataType: 'blob'`，让 SDK 返回 Blob 保留字节；`bodyToReadable` 已支持 Blob → Buffer 转换
+- 与下载无关；私有读不影响（插件用凭据签名下载）
+- jest 7 套件 51 用例通过
+
 ## 2026-08-27 — 版本号 1.0.7
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.7`
