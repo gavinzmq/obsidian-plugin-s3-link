@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-27 — 版本号 1.0.7
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.7`
+- 打标签 `v1.0.7` 并发布（含私有读存储桶图片显示修复与资源路径回退）
+
+## 2026-08-27 — 修复私有读存储桶下图片仍显示错误图标
+
+- 现象：1.0.6 已能稳定下载并保存文件（`Saved ... (182911 bytes)`），文件存在于 `s3_cache`，但图片仍显示错误图标
+- 结论：下载本身成功（私有读不影响，插件用凭据签名下载）；问题在 Obsidian 渲染阶段未能加载缓存文件
+- 修复：
+  - `updateLinkReferences` 为 img/video 增加 `error` 事件回退：Obsidian 资源服务器无法提供缓存文件时，自动切换到 `file://` 直链（`getCacheFileUrl`，渲染器必定可加载）
+  - `obsidianHelper` 新增 `getCacheFileUrl`；`getVaultResourcePath` 各分支打印实际解析路径，便于定位
+  - `saveFileToCacheFolder` 写后打印文件字节数与文件头十六进制（如 `ffd8ff...` 为 JPEG），确证下载内容为真实图片而非错误页
+- jest 7 套件 51 用例通过
+
 ## 2026-08-27 — 版本号 1.0.6
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.6`
