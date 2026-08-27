@@ -14,7 +14,6 @@
 | `s3:[objectKey]`      | 下载并缓存文件到本地，周期性检查 S3 上是否有新版本，有则重新下载 |
 | `s3-sign:[objectKey]` | 生成预签名 URL（7 天有效），过期后自动续签，不下载文件     |
 
-
 支持的 HTML 元素：图片 `img`、视频 `video`、内嵌 span（PDF/音频）、锚点 `a`。
 
 ## 2. 技术栈
@@ -94,7 +93,6 @@ src/
 | `OBSIDIAN_APP_LINK_PREFIX`               | `obsidian://open?file=` | 锚点链接在 Obsidian 内打开的前缀 |
 | `S3_LINK_PLUGIN_DATA_ATTRIBUTE`          | `data-object-key`       | 处理后写入 HTML 元素的标记属性    |
 
-
 ### 4.3 编排核心：`S3PostProcessor`（`src/s3PostProcessor.ts`）
 
 插件的"大脑"，作为 `registerMarkdownPostProcessor` 的回调被 Obsidian 在预览渲染时调用：
@@ -120,7 +118,6 @@ src/
 | `VideoResolver`  | `video`     | 支持普通与签名链接（签名视频嵌入不受支持时警告）                         |
 | `SpanResolver`   | `span[src]` | 仅支持普通链接；Obsidian 用 span 渲染 PDF/音频嵌入，签名 URL 明确不支持 |
 | `AnchorResolver` | `a`         | 支持普通与签名链接                                        |
-
 
 > 注意：`split(":")` 方式解析链接，若 objectKey 本身含 `:` 会截断（设计局限）。
 
@@ -186,7 +183,6 @@ obsidian-plugin-s3-link-manager/<objectKey>/<versionId>
 | `ClearCacheLocalCommand`  | 用 4 个 Resolver 的 `findAllObjectKeysInElement` 收集当前 Markdown 视图中的 objectKey，逐个 `removeItemFromCache`（仅当活动叶子是 MarkdownView 时可见） |
 | `ReloadActiveLeafCommand` | 对预览模式的活动叶子调用 `leaf.rebuildView()` 强制重渲染                                                                                       |
 | `ReloadAllLeafsCommand`   | 遍历所有预览模式的 Markdown 叶子并重渲染                                                                                                     |
-
 
 ### 4.9 设置（`src/settings/`）
 
@@ -266,7 +262,6 @@ stateDiagram-v2
 | 文件系统         | 插件设置       | Obsidian `data.json`（经 `loadData` / `saveData`）                                      |
 | 文件系统         | AWS 凭证（只读） | `~/.aws/credentials`                                                                 |
 
-
 ## 7. 依赖关系图
 
 ```mermaid
@@ -327,3 +322,9 @@ graph TD
   - 命令层对 `rebuildView` / `app.setting.open` 使用了 `@ts-ignore`，依赖未公开的 Obsidian 内部 API。
   - `ClearCacheLocalCommand` 存在 TODO：编辑模式（源码视图）下的链接尚未支持。
   - 普通链接每次打开笔记都会写一次 localStorage 刷新 `lastUpdate`，存在频繁序列化开销。
+
+## 10. 规划中的变更（2026-08-27）
+
+多对象存储支持（腾讯云 COS、阿里云 OSS、S3 兼容端点；设置 UI 全文本输入）设计已定稿，详见
+`decisions/2026-08-27-multi-cloud-storage-support.md`。按冲突解决优先级，该决策文件优先于本文档；
+实现落地后，本文档相应章节（§2 技术栈、§4.6 网络层、§4.9 设置、§6 数据存储）将按新架构更新。

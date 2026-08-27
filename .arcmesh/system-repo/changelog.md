@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-27 — 多对象存储支持设计
+
+- 新增 `decisions/2026-08-27-multi-cloud-storage-support.md`：腾讯云 COS / 阿里云 OSS / S3 兼容存储支持设计（Provider Adapter、全 input UI、版本令牌、设置迁移）
+- 更新 `project.md`：目标与状态补充多存储规划
+- 更新 `architecture.md`：新增 §10 规划中的变更指引
+
 ## 2026-08-27 — `.arcmesh` 纳入版本控制
 
 - `.arcmesh/` 纳入 Git 版本控制并推送至 GitHub
