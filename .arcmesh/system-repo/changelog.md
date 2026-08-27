@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-27 — 版本号 1.0.6
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.6`
+- 打标签 `v1.0.6` 并发布（含缓存文件缺失循环与图片仍不显示的修复）
+
+## 2026-08-27 — 修复缓存文件被误删导致图片仍不显示
+
+- 现象：1.0.5 触发“重新下载”并成功保存文件，但图片仍不显示；每次渲染文件都缺失并再次下载
+- 根因：下载保存后 `getVaultResourcePath` 抛错（原生流写入的文件未被 Obsidian 索引）→ `getResourcePath` catch 中 `removeItemFromCache` 删掉了刚保存的文件 → 无限“下载→删除”循环
+- 修复：
+  - `getResourcePath` 失败时**不再删除缓存**（避免删掉真实存在的文件）；过期条目由 `processS3Links` 按缺失重新下载处理
+  - `getVaultResourcePath` 增加回退链：索引未命中时先试 `FileSystemAdapter.getResourcePath`（app://local），再回退 `getFilePath`（file://，渲染器必定可加载）
+  - `updateLinkReferences` 改为顺序 `await` 设置 src，避免 Obsidian 在 src 设置前完成渲染丢弃元素引用
+  - `DownloadManager.setErrorState` 忽略已完成下载后的尾部 error（防止流在 end 后补发 error 删文件）
+  - `Cache.isFileInCacheFolder` 用 `statSync` 且空文件视为缺失；`saveFileToCacheFolder` 写后校验并打印文件字节数（诊断）
+- 新增测试 4 例；jest 7 套件 51 用例通过
+
 ## 2026-08-27 — 版本号 1.0.5
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.5`
