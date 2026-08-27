@@ -1,17 +1,21 @@
 # Changelog
 
+## 2026-08-27 — 版本号 1.0.4
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.4`
+- 打标签 `v1.0.4` 并发布（含 COS 浏览器 SDK 更换与对象键双重编码 404 修复）
+
 ## 2026-08-27 — 修复对象键双重 URL 编码导致的 404
 
-- 现象：COS 中文文件名 `https://.../1787809406112-%E6%9D%A8...` 经自动替换后，headObject 返回 404（SDK 对已编码 key 再次编码 → `%25`）
-- 修复：`settings.resolveSourceKey` 与 `autoReplace.toS3Link` 对 objectKey 做防御性 `decodeURIComponent`（`decodeObjectKey`，失败回退原值）
-- 链接存真实键名，存储 SDK 只编码一次即命中真实对象
-- 新增测试（编码键替换 / 来源解析解码 / 非编码键保持）3 例；jest 7 套件 47 用例通过
+- 现象：COS 中文文件名经自动替换后 headObject 404（SDK 对已编码 key 再次编码 → `%25`）
+- 修复：`settings.resolveSourceKey` 与 `autoReplace.toS3Link` 对 objectKey 做防御性 `decodeURIComponent`（`decodeObjectKey`，失败回退）
+- 新增测试 3 例；jest 7 套件 47 用例通过
 
 ## 2026-08-27 — COS SDK 更换为浏览器版
 
 - `cos-nodejs-sdk-v5` → `cos-js-sdk-v5@^1.10.1`（Obsidian 运行于渲染进程）
 - `TencentCosClient`：`getObjectStream` → `getObject` + `bodyToReadable`；整对象缓冲
-- 副产品：`main.js` 约 4.4MB → 2.8MB
+- `main.js` 约 4.4MB → 2.8MB
 
 ## 2026-08-27 — 版本号 1.0.3
 
