@@ -1,13 +1,16 @@
 # Changelog
 
+## 2026-08-27 — 版本号 1.0.3
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.3`
+- 打标签 `v1.0.3` 并发布（含自动替换远程链接功能）
+
 ## 2026-08-27 — 自动替换远程链接功能
 
-- 新增 `src/autoReplace.ts`：用正则匹配已配置存储源的 `https://` 链接（AWS / 腾讯 COS / 阿里 OSS / S3 兼容，虚拟主机与路径两种寻址），替换为插件 `s3:` 格式链接（默认源无前缀，非默认源带 `sourceName/` 前缀）；跳过 fenced 代码块
-- 新增 `src/main.ts` vault 监听：`vault.on("modify"/"create")`，当 `autoReplaceEnabled` 开启时自动重写 md 文件；`isAutoReplaceProcessing` 防递归
-- 设置 UI 新增「自动替换远程链接」开关（`PluginSettings.autoReplaceEnabled`，默认关）
+- 新增 `src/autoReplace.ts`：正则匹配已配置存储源的 `https://` 链接（虚拟主机/路径寻址），替换为插件 `s3:` 格式链接；跳过 fenced 代码块
+- 新增 `src/main.ts` vault 监听（modify/create）+ `autoReplaceEnabled` 开关 + 防递归
 - i18n 新增 en/zh 文案；新增 `test/autoReplace.test.ts`（9 用例）
 - 验证：tsc / jest（7 套件 44 用例）/ eslint / esbuild 全部通过
-- 更新 `architecture.md`、`project.md`
 
 ## 2026-08-27 — 版本号 1.0.2
 
