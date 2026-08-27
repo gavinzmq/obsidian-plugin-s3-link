@@ -2,6 +2,7 @@ import S3LinkPlugin from "src/main";
 import Command from "./command";
 import Config from "src/config";
 import { sendNotification } from "src/ui/notification";
+import { Logger } from "src/logger";
 
 export default class ClearCacheGlobalCommand extends Command {
     protected readonly moduleName = "ClearCacheGlobalCommand";
@@ -9,7 +10,7 @@ export default class ClearCacheGlobalCommand extends Command {
     protected readonly commandName = "Clear Cache";
 
     public addCommand(plugin: S3LinkPlugin): void {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::addCommand - Adding command`
         );
 
@@ -17,7 +18,7 @@ export default class ClearCacheGlobalCommand extends Command {
             id: this.commandId,
             name: this.commandName,
             callback: () => {
-                console.debug(
+                Logger.debug(
                     `${this.moduleName} - Clearing global cache`
                 );
                 this.executeCommand(plugin);

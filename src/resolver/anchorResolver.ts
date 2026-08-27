@@ -1,5 +1,6 @@
 import Config from "../config";
 import Resolver from "./resolver";
+import { Logger } from "../logger";
 
 export default class AnchorResolver extends Resolver {
     private readonly moduleName = "AnchorResolver";
@@ -20,7 +21,7 @@ export default class AnchorResolver extends Resolver {
         objectKeys: Map<string, HTMLElement[]>;
         signObjectKeys: Map<string, HTMLElement[]>;
     } {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::resolveHtmlElement - Processing rendered html content`
         );
 
@@ -31,7 +32,7 @@ export default class AnchorResolver extends Resolver {
         this.clearSignObjectKeys();
 
         if (anchorElements.length == 0) {
-            console.debug(
+            Logger.debug(
                 `${this.moduleName} - Rendered markdown content does not contain any anchor tags, aborting...`
             );
 
@@ -45,7 +46,7 @@ export default class AnchorResolver extends Resolver {
             const parts = anchorElement.href.split(Config.S3_LINK_SPLITTER);
 
             if (parts[this.s3LinkLeftPart] == Config.S3_LINK_PREFIX) {
-                console.debug(
+                Logger.debug(
                     `${this.moduleName} - AnchorResolver found link:`,
                     anchorElement.href
                 );
@@ -54,7 +55,7 @@ export default class AnchorResolver extends Resolver {
             } else if (
                 parts[this.s3LinkLeftPart] == Config.S3_SIGNED_LINK_PREFIX
             ) {
-                console.debug(
+                Logger.debug(
                     `${this.moduleName} - AnchorResolver found sign link:`,
                     anchorElement.href
                 );

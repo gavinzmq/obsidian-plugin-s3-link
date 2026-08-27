@@ -61,6 +61,15 @@ const translations: Record<Language, Dictionary> = {
         autoReplace: "Auto-replace remote URLs",
         autoReplaceDesc:
             "Watch for document changes and replace https:// URLs matching configured storage sources with s3: links.",
+
+        logLevel: "Log level",
+        logLevelDesc:
+            "How much detail is written to the developer console. Use Debug when reporting issues.",
+        logLevelDebug: "Debug",
+        logLevelInfo: "Info",
+        logLevelWarn: "Warning",
+        logLevelError: "Error",
+        logLevelNone: "None",
     },
     zh: {
         language: "语言",
@@ -110,6 +119,14 @@ const translations: Record<Language, Dictionary> = {
         autoReplace: "自动替换远程链接",
         autoReplaceDesc:
             "监听文档变化，将匹配已配置存储源的 https:// 链接自动替换为 s3: 格式链接。",
+
+        logLevel: "日志级别",
+        logLevelDesc: "写入开发者控制台的日志详细程度。排查问题时可选择 Debug。",
+        logLevelDebug: "调试",
+        logLevelInfo: "信息",
+        logLevelWarn: "警告",
+        logLevelError: "错误",
+        logLevelNone: "无",
     },
 };
 

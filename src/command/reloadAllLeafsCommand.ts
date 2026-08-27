@@ -3,6 +3,7 @@ import Command from "./command";
 import Config from "src/config";
 import { sendNotification } from "src/ui/notification";
 import { MarkdownView, WorkspaceLeaf } from "obsidian";
+import { Logger } from "src/logger";
 
 /**
  * Reloads the active leaf if it is a preview leaf. The command is only visible if the active leaf is a preview leaf.
@@ -13,7 +14,7 @@ export default class ReloadAllLeafsCommand extends Command {
     protected readonly commandName = "Reload All Open Markdown Preview Leafs";
 
     public addCommand(plugin: S3LinkPlugin): void {
-        console.debug(`${this.moduleName}::addCommand - Adding command`);
+        Logger.debug(`${this.moduleName}::addCommand - Adding command`);
 
         plugin.addCommand({
             id: this.commandId,
@@ -34,7 +35,7 @@ export default class ReloadAllLeafsCommand extends Command {
     }
 
     protected executeCommand(markdownLeaves: WorkspaceLeaf[]): void {
-        console.debug("Rebuilding all open preview leafs");
+        Logger.debug("Rebuilding all open preview leafs");
 
         markdownLeaves.forEach((leaf: WorkspaceLeaf) => {
             if (leaf.view instanceof MarkdownView) {

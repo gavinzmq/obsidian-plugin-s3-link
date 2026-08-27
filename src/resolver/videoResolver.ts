@@ -1,5 +1,6 @@
 import Config from "../config";
 import Resolver from "./resolver";
+import { Logger } from "../logger";
 
 export default class VideoResolver extends Resolver {
     private readonly moduleName = "VideoResolver";
@@ -20,7 +21,7 @@ export default class VideoResolver extends Resolver {
         objectKeys: Map<string, HTMLElement[]>;
         signObjectKeys: Map<string, HTMLElement[]>;
     } {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::resolveHtmlElement - Processing rendered html content`
         );
 
@@ -31,7 +32,7 @@ export default class VideoResolver extends Resolver {
         this.clearSignObjectKeys();
 
         if (videoElements.length == 0) {
-            console.debug(
+            Logger.debug(
                 `${this.moduleName} - Rendered markdown content does not contain any video tags, aborting...`
             );
 
@@ -45,7 +46,7 @@ export default class VideoResolver extends Resolver {
             const parts = videoElement.src.split(Config.S3_LINK_SPLITTER);
 
             if (parts[this.s3LinkLeftPart] == Config.S3_LINK_PREFIX) {
-                console.debug(
+                Logger.debug(
                     `${this.moduleName} - VideoResolver found link:`,
                     videoElement.src
                 );
@@ -54,7 +55,7 @@ export default class VideoResolver extends Resolver {
             } else if (
                 parts[this.s3LinkLeftPart] == Config.S3_SIGNED_LINK_PREFIX
             ) {
-                console.debug(
+                Logger.debug(
                     `${this.moduleName} - VideoResolver found sign link:`,
                     videoElement.src
                 );

@@ -15,6 +15,7 @@ import S3LinkPlugin from "./main";
 import S3Link from "./model/s3Link";
 import { StorageClient } from "./network/storageClient";
 import { StorageClientFactory } from "./network/storageClientFactory";
+import { Logger } from "./logger";
 
 export class S3PostProcessor {
     private readonly moduleName = "S3PostProcessor";
@@ -51,7 +52,7 @@ export class S3PostProcessor {
                     StorageClientFactory.create(source)
                 );
             } catch (error) {
-                console.error(
+                Logger.error(
                     `${this.moduleName} - Failed to create client for source ${source.name}`,
                     error
                 );
@@ -65,7 +66,7 @@ export class S3PostProcessor {
      * @param settings PluginSettings containing the new settings
      */
     public onSettingsChanged(settings: PluginSettings) {
-        console.debug("Settings changed, rebuilding storage clients...");
+        Logger.debug("Settings changed, rebuilding storage clients...");
         this.pluginSettings = settings;
         this.buildClients(settings);
     }
@@ -78,7 +79,7 @@ export class S3PostProcessor {
      * @param element HTMLElement containing the rendered markdown content
      */
     public async onMarkdownPostProcessor(element: HTMLElement) {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::onMarkdownPostProcessor - Processing rendered html content`
         );
 
@@ -128,13 +129,13 @@ export class S3PostProcessor {
             const client = this.clients.get(sourceId);
 
             if (!client) {
-                console.warn(
+                Logger.warn(
                     `${this.moduleName} - No client for source ${sourceId}, skipping ${rawKey}`
                 );
                 continue;
             }
 
-            console.debug(
+            Logger.debug(
                 `${this.moduleName} - Processing S3 link ${rawKey}`
             );
 
@@ -145,7 +146,7 @@ export class S3PostProcessor {
                     cachedS3Link != null &&
                     this.cache.isS3LinkCacheItemExpired(cachedS3Link.lastUpdate)
                 ) {
-                    console.debug(
+                    Logger.debug(
                         `${this.moduleName} - Cache for ${objectKey} expired`
                     );
 
@@ -156,7 +157,7 @@ export class S3PostProcessor {
                     );
 
                     if (versionToken == null) {
-                        console.error(
+                        Logger.error(
                             `${this.moduleName} - Failed to retrieve versionToken for objectKey ${objectKey}`
                         );
 
@@ -164,7 +165,7 @@ export class S3PostProcessor {
                     }
 
                     if (versionToken !== cachedS3Link.versionToken) {
-                        console.log(
+                        Logger.info(
                             `${this.moduleName} - New versionToken ${versionToken} for objectKey ${objectKey}`
                         );
 
@@ -202,7 +203,7 @@ export class S3PostProcessor {
                     // the image broken while localStorage still claims the item
                     // is cached.
                     if (this.cache.isFileInCacheFolder(cachedS3Link)) {
-                        console.debug(
+                        Logger.debug(
                             `${this.moduleName} - Cache not expired`
                         );
                         // update last checked timestamp
@@ -223,7 +224,7 @@ export class S3PostProcessor {
                         continue;
                     }
 
-                    console.warn(
+                    Logger.warn(
                         `${this.moduleName} - Cached file for ${objectKey} is missing from the cache folder, re-downloading`
                     );
                     this.cache.removeItemFromCache(sourceId, objectKey);
@@ -258,7 +259,7 @@ export class S3PostProcessor {
                     versionToken
                 );
             } catch (error) {
-                console.error(
+                Logger.error(
                     `${this.moduleName} - Error processing S3 link ${rawKey} ignoring link`,
                     error
                 );
@@ -284,13 +285,13 @@ export class S3PostProcessor {
             const client = this.clients.get(sourceId);
 
             if (!client) {
-                console.warn(
+                Logger.warn(
                     `${this.moduleName} - No client for source ${sourceId}, skipping ${rawKey}`
                 );
                 continue;
             }
 
-            console.debug(
+            Logger.debug(
                 `${this.moduleName} - Processing S3 signLink ${rawKey}`
             );
 
@@ -320,7 +321,7 @@ export class S3PostProcessor {
                         );
                     }
                 } catch (error) {
-                    console.error(
+                    Logger.error(
                         `${this.moduleName} - Error processing S3 signLink ${rawKey} ignoring link`,
                         error
                     );
@@ -347,7 +348,7 @@ export class S3PostProcessor {
         objectKey: string,
         versionToken: string
     ) {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::updateLinkReferences - Updating link references`
         );
 
@@ -443,7 +444,7 @@ export class S3PostProcessor {
             // valid cached file and force a needless re-download loop. Stale
             // entries are cleaned up by processS3Links when the file is
             // actually missing.
-            console.warn(
+            Logger.warn(
                 `${this.moduleName} - Failed to resolve resource path for ${objectKey}`,
                 error
             );
@@ -457,7 +458,7 @@ export class S3PostProcessor {
         rawKey: string,
         signedUrl: string
     ) {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::updateSignLinkReferences - Updating sign link references`
         );
 
@@ -469,7 +470,7 @@ export class S3PostProcessor {
                 htmlElement.src = signedUrl;
             } else if (htmlElement instanceof HTMLSpanElement) {
                 // not supported
-                console.warn(
+                Logger.warn(
                     `${this.moduleName}: Span elements are not supported for signed urls`
                 );
 
@@ -560,7 +561,7 @@ export class S3PostProcessor {
         const versionToken = await client.getVersionToken(objectKey);
 
         if (versionToken == null) {
-            console.debug(
+            Logger.debug(
                 `${this.moduleName} - Error retrieving versionToken for objectKey ${objectKey}`
             );
             return null;
@@ -593,7 +594,7 @@ export class S3PostProcessor {
         const versionToken = await client.getVersionToken(objectKey);
 
         if (versionToken && versionToken === s3Link.versionToken) {
-            console.debug(
+            Logger.debug(
                 `${this.moduleName} - Item ${objectKey} is still the latest version ${versionToken}`
             );
 

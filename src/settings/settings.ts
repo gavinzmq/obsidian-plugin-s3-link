@@ -1,5 +1,6 @@
 import Config from "../config";
 import { Language } from "../i18n";
+import { Logger, LogLevel } from "../logger";
 
 const moduleName = "Settings";
 
@@ -21,12 +22,14 @@ export interface PluginSettings {
     sources: StorageSource[];
     language: Language;
     autoReplaceEnabled: boolean;
+    logLevel: LogLevel;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
     sources: [],
     language: "en",
     autoReplaceEnabled: false,
+    logLevel: LogLevel.INFO,
 };
 
 /**
@@ -90,7 +93,12 @@ export function migrateLegacySettings(
         signLinkEnabled: true,
     };
 
-    return { sources: [source], language: "en", autoReplaceEnabled: false };
+    return {
+        sources: [source],
+        language: "en",
+        autoReplaceEnabled: false,
+        logLevel: DEFAULT_SETTINGS.logLevel,
+    };
 }
 
 /**
@@ -183,7 +191,7 @@ export function isKnownProvider(source: StorageSource): boolean {
 
 export function isPluginReadyState(settings: PluginSettings): boolean {
     if (!settings.sources || settings.sources.length === 0) {
-        console.info(
+        Logger.info(
             `${moduleName} - Settings is not in valid state, no storage sources configured`
         );
 
@@ -192,7 +200,7 @@ export function isPluginReadyState(settings: PluginSettings): boolean {
 
     for (const source of settings.sources) {
         if (source.bucketName === "") {
-            console.info(
+            Logger.info(
                 `${moduleName} - Settings is not in valid state, bucketName is empty for source ${source.name}`
             );
 
@@ -204,7 +212,7 @@ export function isPluginReadyState(settings: PluginSettings): boolean {
             source.provider === Config.PROVIDERS.ALIYUN_OSS
         ) {
             if (source.region === "") {
-                console.info(
+                Logger.info(
                     `${moduleName} - Settings is not in valid state, region is empty for source ${source.name}`
                 );
 
@@ -212,7 +220,7 @@ export function isPluginReadyState(settings: PluginSettings): boolean {
             }
         } else if (source.provider === Config.PROVIDERS.S3_COMPATIBLE) {
             if (source.endpoint === "") {
-                console.info(
+                Logger.info(
                     `${moduleName} - Settings is not in valid state, endpoint is empty for source ${source.name}`
                 );
 
@@ -221,7 +229,7 @@ export function isPluginReadyState(settings: PluginSettings): boolean {
         }
 
         if (source.accessKeyId === "" || source.secretAccessKey === "") {
-            console.info(
+            Logger.info(
                 `${moduleName} - Settings is not in valid state, credentials are missing for source ${source.name}`
             );
 

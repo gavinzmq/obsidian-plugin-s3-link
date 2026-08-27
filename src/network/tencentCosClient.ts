@@ -8,6 +8,7 @@ import { StorageClient } from "./storageClient";
 // cos-js-sdk-v5 does not ship TypeScript declarations
 // @ts-ignore
 import COS from "cos-js-sdk-v5";
+import { Logger } from "../logger";
 
 /**
  * Adapter for Tencent Cloud COS using the official browser SDK
@@ -37,7 +38,7 @@ export class TencentCosClient implements StorageClient {
                 { Bucket: this.bucket, Region: this.region, Key: objectKey },
                 (err: unknown, data: any) => {
                     if (err) {
-                        console.error(
+                        Logger.error(
                             `${this.moduleName}: Failed to retrieve ETag for ${objectKey}`,
                             err
                         );
@@ -77,7 +78,7 @@ export class TencentCosClient implements StorageClient {
                             objectKey,
                             versionToken
                         );
-                        console.error(
+                        Logger.error(
                             `${this.moduleName}: Failed to retrieve object ${objectKey}`,
                             err
                         );
@@ -135,7 +136,7 @@ export class TencentCosClient implements StorageClient {
                 },
                 (err: unknown, data: { Url: string }) => {
                     if (err) {
-                        console.error(
+                        Logger.error(
                             `${this.moduleName}: Failed to generate signed URL for ${objectKey}`,
                             err
                         );
@@ -155,7 +156,7 @@ export class TencentCosClient implements StorageClient {
                 { Bucket: this.bucket, Region: this.region },
                 (err: unknown) => {
                     if (err) {
-                        console.error(
+                        Logger.error(
                             `${this.moduleName}: Connection test failed`,
                             err
                         );

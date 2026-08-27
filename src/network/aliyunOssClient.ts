@@ -8,6 +8,7 @@ import { StorageClient } from "./storageClient";
 // ali-oss may not ship TypeScript declarations depending on version
 // @ts-ignore
 import OSS from "ali-oss";
+import { Logger } from "../logger";
 
 /**
  * Adapter for Aliyun (Alibaba Cloud) OSS using the official ali-oss SDK.
@@ -85,7 +86,7 @@ export class AliyunOssClient implements StorageClient {
                 objectKey,
                 versionToken
             );
-            console.error(
+            Logger.error(
                 `${this.moduleName}: Failed to retrieve object ${objectKey}`,
                 error
             );

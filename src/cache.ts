@@ -7,6 +7,7 @@ import * as fs from "fs";
 import { Readable } from "stream";
 import { createWriteStream } from "fs";
 import { getCacheFileName } from "./obsidianHelper";
+import { Logger } from "./logger";
 
 export default class Cache {
     private readonly moduleName = "Cache";
@@ -16,12 +17,12 @@ export default class Cache {
         const isFolderExisting = await this.isCacheFolderPresent();
 
         if (!isFolderExisting) {
-            console.info(
+            Logger.info(
                 `${this.moduleName}: Creating cache folder for the first time`
             );
             this.createCacheFolderInBasePath();
         } else {
-            console.info(
+            Logger.info(
                 `${this.moduleName}: S3 cache initialization already done`
             );
         }
@@ -40,7 +41,7 @@ export default class Cache {
         );
 
         if (currentVersion !== String(Config.CACHE_SCHEMA_VERSION)) {
-            console.info(
+            Logger.info(
                 `${this.moduleName}: Cache schema changed, clearing cache`
             );
             await this.clearCache();
@@ -72,12 +73,12 @@ export default class Cache {
         app.vault
             .createFolder(Config.CACHE_FOLDER)
             .then(() => {
-                console.debug(
+                Logger.debug(
                     `${this.moduleName}: Creating cache folder ${Config.CACHE_FOLDER} in root`
                 );
             })
             .catch((error) => {
-                console.error(
+                Logger.error(
                     `${this.moduleName}: Error creating cache folder`,
                     error
                 );
@@ -92,12 +93,12 @@ export default class Cache {
         const fileName = getCacheFileName(objectKey, versionToken);
         const objectPath = `${this.getCachePath()}\\${fileName}`;
 
-        console.info(
+        Logger.info(
             `${this.moduleName}: Saving object to cache folder: ${objectPath}`
         );
 
         if (await app.vault.adapter.exists(objectPath)) {
-            console.debug(
+            Logger.debug(
                 `${this.moduleName}: File already exists in cache, returning existing file`
             );
             return app.vault.getAbstractFileByPath(objectPath) as TFile;
@@ -138,7 +139,7 @@ export default class Cache {
                     }
                 }
 
-                console.debug(
+                Logger.debug(
                     `${this.moduleName}: Saved ${fileName} to cache folder (${
                         stat ? stat.size : 0
                     } bytes, header: ${header || "n/a"})`
@@ -167,7 +168,7 @@ export default class Cache {
     }
 
     public async closeAllOpenStreams() {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}: Closing all open streams: ${this.openStreams.length}`
         );
 
@@ -208,7 +209,7 @@ export default class Cache {
     ) {
         const s3Link = new S3Link(objectKey, Date.now(), versionToken, sourceId);
 
-        console.debug(`${this.moduleName}: writeLocalStorage for ${objectKey}`);
+        Logger.debug(`${this.moduleName}: writeLocalStorage for ${objectKey}`);
 
         window.localStorage.setItem(
             `${Config.PLUGIN_NAME}/${sourceId}/${objectKey}`,
@@ -228,7 +229,7 @@ export default class Cache {
         sourceId: string,
         objectKey: string
     ): S3Link | null {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::findItemInCache - Looking for ${objectKey} in cache`
         );
 
@@ -239,7 +240,7 @@ export default class Cache {
         if (s3Link) {
             const parsedData = JSON.parse(s3Link);
 
-            console.info(
+            Logger.info(
                 `${this.moduleName}: Found s3Link in localStorage`,
                 parsedData
             );
@@ -252,7 +253,7 @@ export default class Cache {
             );
         }
 
-        console.info(
+        Logger.info(
             `${this.moduleName}: No cached s3Link found for objectKey ${objectKey}`
         );
 
@@ -271,7 +272,7 @@ export default class Cache {
         objectKey: string,
         signedUrl: string
     ) {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}: writeSignedUrlToLocalStorage for ${objectKey}`
         );
 
@@ -294,7 +295,7 @@ export default class Cache {
         sourceId: string,
         objectKey: string
     ): S3SignedLink | null {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::findSignedUrlInCache - Looking for ${objectKey} in cache`
         );
 
@@ -305,13 +306,13 @@ export default class Cache {
         if (s3SignLink) {
             const parsedData = JSON.parse(s3SignLink);
 
-            console.info(
+            Logger.info(
                 `${this.moduleName}: Found s3SignLink in localStorage`,
                 parsedData
             );
 
             if (this.isS3SignedLinkCacheItemExpired(parsedData.lastUpdate)) {
-                console.info(
+                Logger.info(
                     `${this.moduleName}: Cache item for ${objectKey} expired, removing from localStorage}`
                 );
                 window.localStorage.removeItem(
@@ -327,7 +328,7 @@ export default class Cache {
             );
         }
 
-        console.info(
+        Logger.info(
             `${this.moduleName}: No cached s3SignLink found for objectKey ${objectKey}`
         );
 
@@ -396,7 +397,7 @@ export default class Cache {
         const basePath = (app.vault.adapter as FileSystemAdapter).getBasePath();
         const cachePath = `${basePath}\\${Config.CACHE_FOLDER}`;
 
-        console.debug(`${this.moduleName}: Cachepath ${cachePath}`);
+        Logger.debug(`${this.moduleName}: Cachepath ${cachePath}`);
 
         return cachePath;
     }
@@ -413,14 +414,14 @@ export default class Cache {
      * Clears all files from the cache folder.
      */
     private async clearCacheFolder() {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::clearCacheFolder - Clearing cache folder`
         );
 
         const cachePath = this.getCachePath();
 
         if (!fs.existsSync(cachePath)) {
-            console.error(
+            Logger.error(
                 `${this.moduleName}: Cache folder does not exist, aborting...`
             );
             return;
@@ -434,7 +435,7 @@ export default class Cache {
 
             if (stat.isFile()) {
                 await fs.promises.unlink(filePath);
-                console.debug(
+                Logger.debug(
                     `${this.moduleName}: Deleted file: ${filePath} from cache folder`
                 );
             }
@@ -445,7 +446,7 @@ export default class Cache {
      * Clears all items from localStorage that are related to the plugin.
      */
     private clearLocalStorage() {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::clearLocalStorage - Clearing localStorage`
         );
 
@@ -455,7 +456,7 @@ export default class Cache {
             if (key.startsWith(Config.PLUGIN_NAME)) {
                 localStorage.removeItem(key);
 
-                console.debug(
+                Logger.debug(
                     `${this.moduleName}: Removed item with key: ${key}`
                 );
             }
@@ -483,14 +484,14 @@ export default class Cache {
      * @returns
      */
     private removeItemFromCacheFolder(sourceId: string, objectKey: string) {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::removeItemFromCacheFolder - Removing ${objectKey} from cache folder`
         );
 
         const s3Link = this.findItemInCache(sourceId, objectKey);
 
         if (!s3Link) {
-            console.debug(
+            Logger.debug(
                 `${this.moduleName}: No cached s3Link found for objectKey ${objectKey}. Nothing to remove from cache folder`
             );
             return;
@@ -501,11 +502,11 @@ export default class Cache {
 
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
-            console.debug(
+            Logger.debug(
                 `${this.moduleName}: Deleted file ${fileName} from cache folder`
             );
         } else {
-            console.debug(
+            Logger.debug(
                 `${this.moduleName}: No file found for ${fileName} - nothing to delete`
             );
         }
@@ -518,7 +519,7 @@ export default class Cache {
      * @param objectKey
      */
     private removeItemFromLocalStorage(sourceId: string, objectKey: string) {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::removeItemFromLocalStorage - Removing ${objectKey} from localStorage`
         );
 
@@ -528,7 +529,7 @@ export default class Cache {
         window.localStorage.removeItem(normalKey);
         window.localStorage.removeItem(signedKey);
 
-        console.debug(
+        Logger.debug(
             `${this.moduleName}: Removed item with key: ${normalKey} and ${signedKey}`
         );
     }

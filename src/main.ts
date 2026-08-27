@@ -15,6 +15,7 @@ import { PluginState } from "./pluginState";
 import { StatusBar } from "./ui/statusBar";
 import { sendNotification } from "./ui/notification";
 import { setLanguage } from "./i18n";
+import { Logger } from "./logger";
 import ClearCacheGlobalCommand from "./command/clearCacheGlobalCommand";
 import ClearCacheLocalCommand from "./command/clearCacheLocalCommand";
 import ReloadActiveLeafCommand from "./command/reloadActiveLeafCommand";
@@ -32,7 +33,7 @@ export default class S3LinkPlugin extends Plugin {
     private isAutoReplaceProcessing = false;
 
     async onload() {
-        console.info(
+        Logger.info(
             `${this.moduleName}::onload - Loading plugin - ${Config.PLUGIN_NAME}`
         );
 
@@ -61,13 +62,13 @@ export default class S3LinkPlugin extends Plugin {
     }
 
     async onunload() {
-        console.info(`${this.moduleName}::onunload - Unloading plugin`);
+        Logger.info(`${this.moduleName}::onunload - Unloading plugin`);
 
         this.cache.closeAllOpenStreams();
     }
 
     async loadSettings() {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::loadSettings - Loading settings for ${Config.PLUGIN_NAME}`
         );
 
@@ -75,7 +76,7 @@ export default class S3LinkPlugin extends Plugin {
         let settings: PluginSettings;
 
         if (isLegacySettings(data)) {
-            console.info(
+            Logger.info(
                 `${this.moduleName}::loadSettings - Migrating legacy settings to storage sources`
             );
             settings = migrateLegacySettings(
@@ -92,16 +93,18 @@ export default class S3LinkPlugin extends Plugin {
 
         this.settings = settings;
         setLanguage(this.settings.language || "en");
+        Logger.setLevel(this.settings.logLevel || DEFAULT_SETTINGS.logLevel);
     }
 
     async saveSettings() {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::saveSettings - Saving settings for ${Config.PLUGIN_NAME}`
         );
 
         await this.saveData(this.settings);
 
         setLanguage(this.settings.language || "en");
+        Logger.setLevel(this.settings.logLevel || DEFAULT_SETTINGS.logLevel);
 
         if (isPluginReadyState(this.settings)) {
             this.setState(PluginState.READY);
@@ -173,7 +176,7 @@ export default class S3LinkPlugin extends Plugin {
                 await this.app.vault.modify(file, replaced);
             }
         } catch (error) {
-            console.error("Failed to auto-replace remote URLs", error);
+            Logger.error("Failed to auto-replace remote URLs", error);
         } finally {
             this.isAutoReplaceProcessing = false;
         }
@@ -184,7 +187,7 @@ export default class S3LinkPlugin extends Plugin {
      * @param cache
      */
     private setupMarkdownPostProcessor(cache: Cache) {
-        console.debug(
+        Logger.debug(
             `${this.moduleName}::setupMarkdownPostProcessor - Setting up markdown post processor`
         );
 

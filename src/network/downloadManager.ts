@@ -2,6 +2,7 @@ import { DownloadRecord } from "./downloadRecord";
 import { DownloadState } from "./downloadState";
 import Config from "../config";
 import Cache from "../cache";
+import { Logger } from "../logger";
 
 export default class DownloadManager {
     private static instance: DownloadManager;
@@ -122,7 +123,7 @@ export default class DownloadManager {
                 ) as DownloadRecord;
 
                 if (downloadRecord.downloadState !== DownloadState.COMPLETED) {
-                    console.log(
+                    Logger.info(
                         `${this.moduleName} - Cleaning unfinished download for ${downloadRecord.objectKey}`
                     );
                     this.cache.removeItemFromCache(

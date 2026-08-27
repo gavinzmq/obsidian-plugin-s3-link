@@ -4,6 +4,7 @@ import S3Link from "./model/s3Link";
 import * as path from "path";
 import * as fs from "fs";
 import { createHash } from "crypto";
+import { Logger } from "./logger";
 
 /**
  * Computes the file name used in the cache folder for a given object key and
@@ -58,13 +59,13 @@ export async function getVaultResourcePath(
                     const resourcePath = adapter.getResourcePath(filePath);
 
                     if (resourcePath) {
-                        console.debug(
+                        Logger.debug(
                             `Resolved cached file via adapter resource path: ${resourcePath}`
                         );
                         return resourcePath;
                     }
                 } catch (error) {
-                    console.warn(
+                    Logger.warn(
                         `Failed to resolve adapter resource path for ${filePath}`,
                         error
                     );
@@ -74,7 +75,7 @@ export async function getVaultResourcePath(
                 // directly from disk, even when the vault index has not picked
                 // the file up.
                 const fileUrl = adapter.getFilePath(filePath);
-                console.debug(
+                Logger.debug(
                     `Resolved cached file via file URL: ${fileUrl}`
                 );
                 return fileUrl;
@@ -89,7 +90,9 @@ export async function getVaultResourcePath(
     }
 
     const resourcePath = app.vault.getResourcePath(loadedFile);
-    console.debug(`Resolved cached file via vault resource path: ${resourcePath}`);
+    Logger.debug(
+        `Resolved cached file via vault resource path: ${resourcePath}`
+    );
     return resourcePath;
 }
 

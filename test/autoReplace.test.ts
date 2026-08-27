@@ -1,5 +1,6 @@
 import { replaceRemoteUrls } from "../src/autoReplace";
 import { resolveSourceKey, StorageSource } from "../src/settings/settings";
+import { LogLevel } from "../src/logger";
 
 function source(overrides: Partial<StorageSource>): StorageSource {
     return {
@@ -166,6 +167,7 @@ describe("replaceRemoteUrls", () => {
             sources,
             language: "en" as const,
             autoReplaceEnabled: false,
+            logLevel: LogLevel.INFO,
         };
         const resolved = resolveSourceKey(
             settings,
@@ -187,6 +189,7 @@ describe("replaceRemoteUrls", () => {
             sources,
             language: "en" as const,
             autoReplaceEnabled: false,
+            logLevel: LogLevel.INFO,
         };
         const resolved = resolveSourceKey(settings, "photos/a.png");
 

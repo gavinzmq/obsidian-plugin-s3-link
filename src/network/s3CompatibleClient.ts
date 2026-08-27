@@ -9,6 +9,7 @@ import { Readable } from "stream";
 import Config from "../config";
 import { StorageSource } from "../settings/settings";
 import DownloadManager from "./downloadManager";
+import { Logger } from "../logger";
 import { StorageClient } from "./storageClient";
 
 /**
@@ -67,14 +68,14 @@ export class S3CompatibleClient implements StorageClient {
 
             if (exactFilteredVersion.length > 0) {
                 const versionId = exactFilteredVersion[0].VersionId;
-                console.debug(
+                Logger.debug(
                     `${this.moduleName}: Retrieved versionId ${versionId} for object ${objectKey}`
                 );
 
                 return versionId;
             }
         } catch (error) {
-            console.error(
+            Logger.error(
                 `${this.moduleName}: Failed to retrieve object versionId`,
                 error
             );
@@ -135,7 +136,7 @@ export class S3CompatibleClient implements StorageClient {
                 objectKey,
                 versionToken
             );
-            console.error("Error retrieving object from S3", error);
+            Logger.error("Error retrieving object from S3", error);
             throw error;
         }
     }

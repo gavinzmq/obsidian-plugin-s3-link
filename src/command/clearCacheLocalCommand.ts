@@ -8,6 +8,7 @@ import SpanResolver from "src/resolver/spanResolver";
 import AnchorResolver from "src/resolver/anchorResolver";
 import { resolveSourceKey } from "src/settings/settings";
 import { sendNotification } from "src/ui/notification";
+import { Logger } from "src/logger";
 
 // TODO need to implement the difference between preview and edit mode
 // in preview mode we have actual html elements to resolve
@@ -18,7 +19,7 @@ export default class ClearCacheLocalCommand extends Command {
     protected readonly commandName = "Clear Cache of Current Leaf";
 
     public addCommand(plugin: S3LinkPlugin): void {
-        console.debug(`${this.moduleName}::addCommand - Adding command`);
+        Logger.debug(`${this.moduleName}::addCommand - Adding command`);
 
         plugin.addCommand({
             id: this.commandId,
@@ -71,7 +72,7 @@ export default class ClearCacheLocalCommand extends Command {
                 rawKey
             );
 
-            console.debug(
+            Logger.debug(
                 `Found link: ${rawKey} should clear cache for that link`
             );
 

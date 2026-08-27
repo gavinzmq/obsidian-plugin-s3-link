@@ -8,6 +8,7 @@ import {
 } from "./settings";
 import Config from "../config";
 import { Language, setLanguage, t } from "../i18n";
+import { Logger, LogLevel, getLogLevelOptions } from "../logger";
 import { StorageClientFactory } from "../network/storageClientFactory";
 import { sendNotification } from "../ui/notification";
 
@@ -30,6 +31,7 @@ export class PluginSettingsTab extends PluginSettingTab {
         containerEl.empty();
 
         this.renderLanguageSetting(containerEl);
+        this.renderLogLevelSetting(containerEl);
 
         containerEl.createEl("p", { text: t("settingsIntro") });
 
@@ -88,6 +90,35 @@ export class PluginSettingsTab extends PluginSettingTab {
                         this.display();
                     })
             );
+    }
+
+    private renderLogLevelSetting(containerEl: HTMLElement) {
+        const logLevelLabels: Record<string, string> = {
+            [LogLevel.DEBUG]: t("logLevelDebug"),
+            [LogLevel.INFO]: t("logLevelInfo"),
+            [LogLevel.WARN]: t("logLevelWarn"),
+            [LogLevel.ERROR]: t("logLevelError"),
+            [LogLevel.NONE]: t("logLevelNone"),
+        };
+
+        new Setting(containerEl)
+            .setName(t("logLevel"))
+            .setDesc(t("logLevelDesc"))
+            .addDropdown((dropdown) => {
+                const options: Record<string, string> = {};
+                getLogLevelOptions().forEach((level) => {
+                    options[level] = logLevelLabels[level] ?? level;
+                });
+
+                dropdown
+                    .addOptions(options)
+                    .setValue(this.plugin.settings.logLevel)
+                    .onChange(async (value: LogLevel) => {
+                        this.plugin.settings.logLevel = value;
+                        Logger.setLevel(value);
+                        await this.plugin.saveSettings();
+                    });
+            });
     }
 
     private renderSource(
@@ -253,7 +284,7 @@ export class PluginSettingsTab extends PluginSettingTab {
                             await client.testConnection();
                             sendNotification(t("testSuccess"));
                         } catch (error) {
-                            console.error(
+                            Logger.error(
                                 `Connection test failed for source ${source.name}`,
                                 error
                             );
