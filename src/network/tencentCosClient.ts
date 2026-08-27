@@ -5,12 +5,13 @@ import { StorageSource } from "../settings/settings";
 import DownloadManager from "./downloadManager";
 import { StorageClient } from "./storageClient";
 
-// cos-nodejs-sdk-v5 does not ship TypeScript declarations
+// cos-js-sdk-v5 does not ship TypeScript declarations
 // @ts-ignore
-import COS from "cos-nodejs-sdk-v5";
+import COS from "cos-js-sdk-v5";
 
 /**
- * Adapter for Tencent Cloud COS using the official cos-nodejs-sdk-v5.
+ * Adapter for Tencent Cloud COS using the official browser SDK
+ * (cos-js-sdk-v5) which runs inside the Obsidian renderer.
  * The version token is derived from the object ETag.
  */
 export class TencentCosClient implements StorageClient {
@@ -58,7 +59,7 @@ export class TencentCosClient implements StorageClient {
         downloadManager.addNewDownload(this.sourceId, objectKey, versionToken);
 
         return new Promise((resolve, reject) => {
-            this.cos.getObjectStream(
+            this.cos.getObject(
                 { Bucket: this.bucket, Region: this.region, Key: objectKey },
                 (err: unknown, data: any) => {
                     if (err) {
@@ -81,24 +82,33 @@ export class TencentCosClient implements StorageClient {
                         versionToken
                     );
 
-                    const stream = data.Body as Readable;
+                    this.bodyToReadable(data.Body)
+                        .then((stream) => {
+                            stream.on("end", () => {
+                                downloadManager.setCompletedState(
+                                    this.sourceId,
+                                    objectKey,
+                                    versionToken
+                                );
+                            });
+                            stream.on("error", () => {
+                                downloadManager.setErrorState(
+                                    this.sourceId,
+                                    objectKey,
+                                    versionToken
+                                );
+                            });
 
-                    stream.on("end", () => {
-                        downloadManager.setCompletedState(
-                            this.sourceId,
-                            objectKey,
-                            versionToken
-                        );
-                    });
-                    stream.on("error", () => {
-                        downloadManager.setErrorState(
-                            this.sourceId,
-                            objectKey,
-                            versionToken
-                        );
-                    });
-
-                    resolve(stream);
+                            resolve(stream);
+                        })
+                        .catch((conversionError) => {
+                            downloadManager.setErrorState(
+                                this.sourceId,
+                                objectKey,
+                                versionToken
+                            );
+                            reject(conversionError);
+                        });
                 }
             );
         });
@@ -148,6 +158,29 @@ export class TencentCosClient implements StorageClient {
                 }
             );
         });
+    }
+
+    /**
+     * Converts the response body returned by the browser SDK into a Node
+     * Readable so it can be piped into the local cache file.
+     * Note: the browser SDK buffers the whole object, so large files are not
+     * streamed incrementally for Tencent COS.
+     */
+    private async bodyToReadable(body: unknown): Promise<Readable> {
+        if (body instanceof ArrayBuffer) {
+            return Readable.from([Buffer.from(body)]);
+        }
+
+        if (body instanceof Blob) {
+            const buffer = Buffer.from(await body.arrayBuffer());
+            return Readable.from([buffer]);
+        }
+
+        if (typeof body === "string") {
+            return Readable.from([Buffer.from(body)]);
+        }
+
+        return Readable.from([Buffer.from(body as ArrayBuffer)]);
     }
 
     private extractETag(etag: string | undefined): string | undefined {

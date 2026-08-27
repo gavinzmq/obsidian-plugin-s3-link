@@ -1,7 +1,7 @@
 # obsidian-plugin-s3-link 架构文档
 
 > 最后更新：2026-08-27
-> 本文档基于对代码库的静态扫描自动生成，并随多对象存储支持、UI 增强与自动替换功能同步更新。
+> 本文档基于对代码库的静态扫描自动生成，并随多对象存储支持、UI 增强、自动替换与 COS 浏览器 SDK 调整同步更新。
 
 ## 1. 项目概览
 
@@ -26,8 +26,10 @@
 
 - TypeScript 4.7；esbuild（CJS，`src/main.ts` → `main.js`）
 - Jest + ts-jest + jest-environment-jsdom（`test/mock/obsidianMock.ts`）
-- 存储 SDK：`@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`、`cos-nodejs-sdk-v5`、`ali-oss`
-- Obsidian API：`Plugin`、`PluginSettingTab`、`Notice`、`TFile`、`TAbstractFile`、`FileSystemAdapter`、`Vault` 事件
+- 存储 SDK：`@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`、`cos-js-sdk-v5`（浏览器）、`ali-oss`
+- Obsidian API：`Plugin`、`PluginSettingTab`、`Notice`、`TFile`、`TAbstractFile`、`FileSystemAdapter`、`Vault`
+
+> Obsidian 插件运行于渲染进程（浏览器环境），COS 使用浏览器 SDK `cos-js-sdk-v5` 而非 Node 版。
 
 ## 3. 目录结构
 
@@ -45,7 +47,7 @@ src/
 ├── model/                   # S3Link（versionToken/sourceId）、S3SignedLink
 ├── network/                 # StorageClient + 3 适配器 + 工厂 + DownloadManager
 ├── resolver/                # img/video/span/anchor 四类解析器
-├── settings/                # StorageSource 模型 + settingsTab（下拉/自动端点/测试连接/语言/自动替换开关）
+├── settings/                # StorageSource 模型 + settingsTab
 └── ui/                      # notification、statusBar
 ```
 
@@ -56,8 +58,7 @@ src/
 ### 4.1 入口：`S3LinkPlugin`（`src/main.ts`）
 
 - `onload`：状态栏 → 加载设置（含迁移）→ 设置页 → `Cache` → 清理下载 → 后处理器 → 命令 → `registerVaultListeners` → 状态。
-- `registerVaultListeners`：`vault.on("modify"/"create")` → `onFileModified`。
-- `onFileModified`：`autoReplaceEnabled` 开启时，对 `.md` 文件 `read` → `replaceRemoteUrls` → 若有变化 `modify`；`isAutoReplaceProcessing` 防递归。
+- `registerVaultListeners`：`vault.on("modify"/"create")` → `onFileModified`（`autoReplaceEnabled` 开启时对 `.md` 重写 `https://` → `s3:`；`isAutoReplaceProcessing` 防递归）。
 
 ### 4.2 配置常量：`Config`（`src/config.ts`）
 
@@ -65,11 +66,11 @@ src/
 
 ### 4.3 编排核心：`S3PostProcessor`（`src/s3PostProcessor.ts`）
 
-4 个 Resolver 解析 HTML → `resolveSourceKey` 解析 `{sourceId, objectKey}` → 从 `clients` Map 取 `StorageClient` 处理。使用统一 `versionToken`。
+4 个 Resolver → `resolveSourceKey` → `clients` Map → `StorageClient` 处理；统一 `versionToken`。
 
 ### 4.4 解析器族：`Resolver`（`src/resolver/`）
 
-`img` / `video` / `span` / `a` 四类；提取原始键；`split(":")` 解析（含冒号截断局限）。
+`img` / `video` / `span` / `a`；`split(":")` 解析（含冒号截断局限）。
 
 ### 4.5 缓存：`Cache`（`src/cache.ts`）
 
@@ -86,13 +87,13 @@ interface StorageClient {
 }
 ```
 
-| 适配器 | 版本标识 | 签名 URL | 测试连接 |
-| --- | --- | --- | --- |
-| `S3CompatibleClient` | `VersionId` | presigner | ListObjectsV2 |
-| `TencentCosClient` | `ETag` | `cos.getObjectUrl` | `cos.getBucket` |
-| `AliyunOssClient` | `etag` | `client.signatureUrl` | `client.list` |
+| 适配器 | 依赖 | 版本标识 | 签名 URL | 测试连接 | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| `S3CompatibleClient` | `@aws-sdk/client-s3` | `VersionId` | presigner | ListObjectsV2 | endpoint/pathStyle |
+| `TencentCosClient` | `cos-js-sdk-v5`（浏览器） | headObject `ETag` | `cos.getObjectUrl` | `cos.getBucket` | 下载整对象缓冲 |
+| `AliyunOssClient` | `ali-oss` | head `etag` | `client.signatureUrl` | `client.list` | 使用自动组合端点 |
 
-`StorageClientFactory.create(source)` 按 provider 分发；`DownloadManager` 管理下载状态机。
+`StorageClientFactory.create(source)` 按 provider 分发；`DownloadManager` 管理下载状态机（`PENDING → RUNNING → COMPLETED / FAILED`）。
 
 ### 4.7 AWS 凭证（已下线）
 
@@ -104,7 +105,7 @@ interface StorageClient {
 
 - `StorageSource` + `PluginSettings{sources, language, autoReplaceEnabled}`。
 - `getComposedEndpoint` / `isKnownProvider` / `resolveSourceKey` / `isPluginReadyState`。
-- `PluginSettingsTab`：语言下拉、自动替换开关、Provider 下拉、已知服务商端点自动组合（不显示输入框）、S3 兼容自定义端点、测试连接、添加/删除源。
+- `PluginSettingsTab`：语言下拉、自动替换开关、Provider 下拉、已知服务商端点自动组合、S3 兼容自定义端点、测试连接、添加/删除源。
 
 ### 4.10 UI（`src/ui/`）
 
@@ -116,13 +117,8 @@ interface StorageClient {
 
 ### 4.12 自动替换远程链接（`src/autoReplace.ts`）
 
-- 为每个源构建主机后缀规则：
-  - 腾讯 COS：`cos.<region>.myqcloud.com`
-  - 阿里 OSS：`oss-<region>.aliyuncs.com`、`oss.aliyuncs.com`
-  - AWS：`s3.<region>.amazonaws.com`、`s3-<region>.amazonaws.com`、`s3.amazonaws.com`
-  - S3 兼容：端点主机名（`extractHost`）
-- `replaceRemoteUrls(content, sources)`：正则匹配 `https?://`，支持虚拟主机（`https://<bucket>.<host>/<key>`）与路径（`https://<host>/<bucket>/<key>`）两种寻址，桶名匹配后提取 objectKey，替换为 `s3:<sourceName/objectKey>`（默认源无前缀）；fenced 代码块（```` ``` ````）不处理。
-- 由 `main.ts` 的 vault 监听按需调用。
+- 各源主机后缀规则（COS `cos.<region>.myqcloud.com`；OSS `oss-<region>.aliyuncs.com`/`oss.aliyuncs.com`；AWS `s3.*.amazonaws.com`；S3 兼容端点主机名）
+- `replaceRemoteUrls`：正则匹配 `https?://`，虚拟主机/路径寻址，桶名匹配后替换为 `s3:<sourceName/objectKey>`（默认源无前缀）；fenced 代码块不处理。
 
 ## 5. 核心流程
 
@@ -240,19 +236,16 @@ graph TD
 
 ## 8. 构建、测试与发布
 
-- 开发 `npm run dev`；构建 `npm run build`（tsc + esbuild，`main.js` 约 4.4MB）；测试 Jest（7 套件 / 44 用例）；lint `npx eslint .`。
+- 开发 `npm run dev`；构建 `npm run build`（tsc + esbuild，`main.js` 约 2.8MB）；测试 Jest（7 套件 / 44 用例）；lint `npx eslint .`。
 - 发布：推送 `v*` 标签触发 GitHub Actions 创建 Release（main.js / manifest.json / versions.json）。
 
 ## 9. 设计要点与已知局限
 
-1. 多源 + 版本令牌；适配器隔离；端点自动组合；大文件流式；崩溃恢复。
-2. **自动替换局限**：
-  - 使用 `s3:` 格式（`s3://` 不被插件解析器识别）
-  - fenced 代码块不处理；**行内代码（`code`）与 HTML 标签内 URL 未做保护**（可能被替换）
-  - 仅处理 `.md` 文件；仅在文档 modify/create 时触发，不做全库批量替换
-  - `modify` 写回可能影响正在编辑该文件的游标位置
-3. 其他已知问题：`split(":")` 冒号截断；`forEach(async)` 未串行等待；COS/OSS 适配器需真桶联调；i18n 暂仅覆盖设置 UI。
+1. 多源 + 版本令牌；适配器隔离；端点自动组合；崩溃恢复（`CACHE_SCHEMA_VERSION` / `DownloadManager` 清理）。
+2. **COS 浏览器 SDK 调整**：`cos-js-sdk-v5` 整对象缓冲下载（无增量流式），超大文件内存占用需注意；`ali-oss` 仍为 Node 目标 SDK，浏览器环境可用性待真机确认。
+3. **自动替换局限**：`s3:` 格式（`s3://` 不被解析）；fenced 代码块不处理，行内代码/HTML 内 URL 未保护；仅 `.md` 且仅修改时触发；`modify` 写回可能影响正在编辑游标。
+4. 其他：`split(":")` 冒号截断；`forEach(async)` 未串行等待；命令层依赖未公开 API（`@ts-ignore`）；i18n 暂仅覆盖设置 UI。
 
 ## 10. 已实现的决策（2026-08-27）
 
-多对象存储支持、UI 增强与自动替换功能已按决策文件（含 §7 修订）实现并落地，本文档已同步更新。
+多对象存储支持、UI 增强、自动替换与 COS 浏览器 SDK 调整均已实现并落地，本文档已同步更新。

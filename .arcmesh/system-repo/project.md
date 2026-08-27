@@ -26,13 +26,13 @@
 - Obsidian API：`Plugin`、`PluginSettingTab`、`Notice`、`TFile`、`TAbstractFile`、`FileSystemAdapter`、`Vault`
 - esbuild（打包，CJS，tree-shaking）
 - Jest + ts-jest + jest-environment-jsdom（7 套件 / 44 用例，含 obsidian mock）
-- 存储 SDK：`@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`、`cos-nodejs-sdk-v5`、`ali-oss`
+- 存储 SDK：`@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`、`cos-js-sdk-v5`（浏览器）、`ali-oss`
 
 ## Status
 
-- 版本：1.0.2（`manifest.json`，已发布）
+- 版本：1.0.3（`manifest.json`，已发布）
 - 架构文档：`architecture.md`（2026-08-27 随功能更新）
 - 组件注册：`components/obsidian-plugin-s3-link.md`
-- 设计决策：`decisions/2026-08-27-multi-cloud-storage-support.md`（已实现，含 §7 UI 修订）
-- 验证：tsc / esbuild / Jest / ESLint 全部通过
-- 待办：COS/OSS 真桶端到端联调；自动替换对行内代码的防护；已知局限见 `architecture.md` §9
+- 设计决策：`decisions/2026-08-27-multi-cloud-storage-support.md`（已实现，含 §7 UI 修订与 COS 浏览器 SDK 调整）
+- 验证：tsc / esbuild（`main.js` 约 2.8MB）/ Jest / ESLint 全部通过
+- 待办：`ali-oss` 浏览器环境真机验证；COS/OSS 真桶端到端联调；已知局限见 `architecture.md` §9
