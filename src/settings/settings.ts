@@ -1,4 +1,5 @@
 import Config from "../config";
+import { Language } from "../i18n";
 
 const moduleName = "Settings";
 
@@ -18,10 +19,12 @@ export interface StorageSource {
 
 export interface PluginSettings {
     sources: StorageSource[];
+    language: Language;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
     sources: [],
+    language: "en",
 };
 
 /**
@@ -85,7 +88,7 @@ export function migrateLegacySettings(
         signLinkEnabled: true,
     };
 
-    return { sources: [source] };
+    return { sources: [source], language: "en" };
 }
 
 /**
@@ -124,6 +127,42 @@ export function resolveSourceKey(
     };
 }
 
+/**
+ * Returns the endpoint used for the given source. For known providers the
+ * endpoint is composed from the region; for S3-compatible sources the custom
+ * endpoint is returned (the AWS SDK uses its default endpoint when empty).
+ *
+ * @param source the storage source
+ */
+export function getComposedEndpoint(source: StorageSource): string {
+    switch (source.provider) {
+        case Config.PROVIDERS.TENCENT_COS:
+            return source.region
+                ? `https://cos.${source.region}.myqcloud.com`
+                : "";
+        case Config.PROVIDERS.ALIYUN_OSS:
+            return source.region
+                ? `https://oss-${source.region}.aliyuncs.com`
+                : "";
+        default:
+            return source.endpoint;
+    }
+}
+
+/**
+ * True for providers whose endpoint is composed automatically and should not
+ * be entered by the user (AWS S3, Tencent Cloud COS, Aliyun OSS).
+ *
+ * @param source the storage source
+ */
+export function isKnownProvider(source: StorageSource): boolean {
+    return (
+        source.provider === Config.PROVIDERS.AWS ||
+        source.provider === Config.PROVIDERS.TENCENT_COS ||
+        source.provider === Config.PROVIDERS.ALIYUN_OSS
+    );
+}
+
 export function isPluginReadyState(settings: PluginSettings): boolean {
     if (!settings.sources || settings.sources.length === 0) {
         console.info(
@@ -143,22 +182,24 @@ export function isPluginReadyState(settings: PluginSettings): boolean {
         }
 
         if (
-            source.provider === Config.PROVIDERS.AWS ||
-            source.provider === Config.PROVIDERS.S3_COMPATIBLE
+            source.provider === Config.PROVIDERS.TENCENT_COS ||
+            source.provider === Config.PROVIDERS.ALIYUN_OSS
         ) {
-            if (source.region === "" && source.endpoint === "") {
+            if (source.region === "") {
                 console.info(
-                    `${moduleName} - Settings is not in valid state, region/endpoint is empty for source ${source.name}`
+                    `${moduleName} - Settings is not in valid state, region is empty for source ${source.name}`
                 );
 
                 return false;
             }
-        } else if (source.endpoint === "") {
-            console.info(
-                `${moduleName} - Settings is not in valid state, endpoint is empty for source ${source.name}`
-            );
+        } else if (source.provider === Config.PROVIDERS.S3_COMPATIBLE) {
+            if (source.endpoint === "") {
+                console.info(
+                    `${moduleName} - Settings is not in valid state, endpoint is empty for source ${source.name}`
+                );
 
-            return false;
+                return false;
+            }
         }
 
         if (source.accessKeyId === "" || source.secretAccessKey === "") {

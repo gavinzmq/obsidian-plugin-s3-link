@@ -29,4 +29,10 @@ export interface StorageClient {
      * @param objectKey the object key
      */
     getSignedUrl(objectKey: string): Promise<string>;
+
+    /**
+     * Tests the connection to the storage (e.g. lists the bucket with a limit).
+     * Resolves if the connection and credentials are valid, rejects otherwise.
+     */
+    testConnection(): Promise<void>;
 }

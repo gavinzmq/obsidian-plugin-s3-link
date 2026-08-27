@@ -1,11 +1,20 @@
 import S3LinkPlugin from "../main";
 import { App, PluginSettingTab, Setting } from "obsidian";
-import { StorageSource, createDefaultSource } from "./settings";
+import {
+    StorageSource,
+    createDefaultSource,
+    getComposedEndpoint,
+    isKnownProvider,
+} from "./settings";
+import Config from "../config";
+import { Language, setLanguage, t } from "../i18n";
+import { StorageClientFactory } from "../network/storageClientFactory";
+import { sendNotification } from "../ui/notification";
 
 /**
- * Settings tab rendered entirely with text inputs (no provider specific
- * dropdowns) supporting AWS S3, Tencent Cloud COS, Aliyun OSS and any
- * S3-compatible endpoint.
+ * Settings tab supporting multiple storage sources (AWS S3, Tencent Cloud COS,
+ * Aliyun OSS, S3-compatible) with a provider dropdown, auto-composed endpoints
+ * for known providers, a connection test and a language selector (i18n).
  */
 export class PluginSettingsTab extends PluginSettingTab {
     plugin: S3LinkPlugin;
@@ -20,16 +29,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 
         containerEl.empty();
 
+        this.renderLanguageSetting(containerEl);
+
+        containerEl.createEl("p", { text: t("settingsIntro") });
+
         const sources = this.plugin.settings.sources;
 
-        containerEl.createEl("p", {
-            text: "Configure one or more storage sources. All fields are plain text inputs and support AWS S3, Tencent Cloud COS, Aliyun OSS and any S3-compatible endpoint.",
-        });
-
         if (sources.length === 0) {
-            containerEl.createEl("p", {
-                text: "No storage sources configured yet. Add a source to start using the plugin.",
-            });
+            containerEl.createEl("p", { text: t("noSources") });
         }
 
         sources.forEach((source, index) => {
@@ -37,12 +44,38 @@ export class PluginSettingsTab extends PluginSettingTab {
         });
 
         new Setting(containerEl).addButton((button) =>
-            button.setButtonText("Add Source").onClick(async () => {
+            button.setButtonText(t("addSource")).onClick(async () => {
                 this.plugin.settings.sources.push(createDefaultSource());
                 await this.plugin.saveSettings();
                 this.display();
             })
         );
+    }
+
+    private getProviderOptions(): Record<string, string> {
+        return {
+            [Config.PROVIDERS.AWS]: t("providerAws"),
+            [Config.PROVIDERS.TENCENT_COS]: t("providerTencent"),
+            [Config.PROVIDERS.ALIYUN_OSS]: t("providerAliyun"),
+            [Config.PROVIDERS.S3_COMPATIBLE]: t("providerS3Compatible"),
+        };
+    }
+
+    private renderLanguageSetting(containerEl: HTMLElement) {
+        new Setting(containerEl)
+            .setName(t("language"))
+            .setDesc(t("languageDesc"))
+            .addDropdown((dropdown) =>
+                dropdown
+                    .addOptions({ en: "English", zh: "中文" })
+                    .setValue(this.plugin.settings.language)
+                    .onChange(async (value: Language) => {
+                        this.plugin.settings.language = value;
+                        setLanguage(value);
+                        await this.plugin.saveSettings();
+                        this.display();
+                    })
+            );
     }
 
     private renderSource(
@@ -51,14 +84,12 @@ export class PluginSettingsTab extends PluginSettingTab {
         index: number
     ) {
         new Setting(containerEl)
-            .setName(`Storage Source ${index + 1}`)
+            .setName(`${t("storageSource")} ${index + 1}`)
             .setHeading();
 
         new Setting(containerEl)
-            .setName("Name")
-            .setDesc(
-                "Display name. Used as optional prefix in links, e.g. s3:name/objectKey"
-            )
+            .setName(t("name"))
+            .setDesc(t("nameDesc"))
             .addText((text) =>
                 text
                     .setValue(source.name)
@@ -69,37 +100,49 @@ export class PluginSettingsTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName("Provider")
-            .setDesc(
-                "Supported values: aws, tencent-cos, aliyun-oss, s3-compatible"
-            )
-            .addText((text) =>
-                text
+            .setName(t("provider"))
+            .setDesc(t("providerDesc"))
+            .addDropdown((dropdown) =>
+                dropdown
+                    .addOptions(this.getProviderOptions())
                     .setValue(source.provider)
                     .onChange(async (value) => {
                         source.provider = value;
+                        // custom endpoints only apply to s3-compatible sources
+                        if (value !== Config.PROVIDERS.S3_COMPATIBLE) {
+                            source.endpoint = "";
+                        }
                         await this.plugin.saveSettings();
+                        this.display();
                     })
             );
 
-        new Setting(containerEl)
-            .setName("Endpoint")
-            .setDesc(
-                "Custom endpoint URL (required for COS/OSS/S3-compatible, leave empty for AWS)"
-            )
-            .addText((text) =>
-                text
-                    .setPlaceholder("https://...")
-                    .setValue(source.endpoint)
-                    .onChange(async (value) => {
-                        source.endpoint = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
+        if (isKnownProvider(source)) {
+            const composedEndpoint = getComposedEndpoint(source);
+            new Setting(containerEl)
+                .setName(t("endpoint"))
+                .setDesc(
+                    composedEndpoint
+                        ? `${t("endpointComposed")}: ${composedEndpoint}`
+                        : t("endpointKnownDesc")
+                );
+        } else {
+            new Setting(containerEl)
+                .setName(t("endpoint"))
+                .setDesc(t("endpointCustomDesc"))
+                .addText((text) =>
+                    text
+                        .setPlaceholder(t("endpointPlaceholder"))
+                        .setValue(source.endpoint)
+                        .onChange(async (value) => {
+                            source.endpoint = value;
+                            await this.plugin.saveSettings();
+                        })
+                );
+        }
 
         new Setting(containerEl)
-            .setName("Bucket Name")
-            .setDesc("The name of the bucket")
+            .setName(t("bucket"))
             .addText((text) =>
                 text
                     .setValue(source.bucketName)
@@ -110,10 +153,8 @@ export class PluginSettingsTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName("Region")
-            .setDesc(
-                "Region identifier, e.g. eu-central-1 or ap-guangzhou (optional for some providers)"
-            )
+            .setName(t("region"))
+            .setDesc(t("regionDesc"))
             .addText((text) =>
                 text
                     .setValue(source.region)
@@ -124,8 +165,8 @@ export class PluginSettingsTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName("Access Key ID")
-            .setDesc("The Access Key ID of your account")
+            .setName(t("accessKey"))
+            .setDesc(t("accessKey"))
             .addText((text) =>
                 text
                     .setValue(source.accessKeyId)
@@ -136,8 +177,8 @@ export class PluginSettingsTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName("Secret Access Key")
-            .setDesc("The Secret Access Key of your account")
+            .setName(t("secretKey"))
+            .setDesc(t("secretKey"))
             .addText((text) =>
                 text
                     .setValue(source.secretAccessKey)
@@ -147,21 +188,23 @@ export class PluginSettingsTab extends PluginSettingTab {
                     })
             );
 
-        new Setting(containerEl)
-            .setName("Path-style addressing")
-            .setDesc("Enable for most custom/S3-compatible endpoints")
-            .addToggle((toggle) =>
-                toggle
-                    .setValue(source.pathStyle)
-                    .onChange(async (value) => {
-                        source.pathStyle = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
+        if (source.provider === Config.PROVIDERS.S3_COMPATIBLE) {
+            new Setting(containerEl)
+                .setName(t("pathStyle"))
+                .setDesc(t("pathStyleDesc"))
+                .addToggle((toggle) =>
+                    toggle
+                        .setValue(source.pathStyle)
+                        .onChange(async (value) => {
+                            source.pathStyle = value;
+                            await this.plugin.saveSettings();
+                        })
+                );
+        }
 
         new Setting(containerEl)
-            .setName("Default source")
-            .setDesc("Links without a source prefix (s3:objectKey) use this source")
+            .setName(t("defaultSource"))
+            .setDesc(t("defaultSourceDesc"))
             .addToggle((toggle) =>
                 toggle
                     .setValue(source.defaultSource)
@@ -175,7 +218,7 @@ export class PluginSettingsTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName("Enable signed links (s3-sign)")
+            .setName(t("signLinks"))
             .addToggle((toggle) =>
                 toggle
                     .setValue(source.signLinkEnabled)
@@ -185,19 +228,41 @@ export class PluginSettingsTab extends PluginSettingTab {
                     })
             );
 
-        new Setting(containerEl).addButton((button) =>
-            button
-                .setButtonText("Remove Source")
-                .setWarning()
-                .onClick(async () => {
-                    this.plugin.settings.sources =
-                        this.plugin.settings.sources.filter(
-                            (s) => s.id !== source.id
-                        );
-                    await this.plugin.saveSettings();
-                    this.display();
-                })
-        );
+        new Setting(containerEl)
+            .addButton((button) =>
+                button
+                    .setButtonText(t("testConnection"))
+                    .setCta()
+                    .onClick(async () => {
+                        button.setDisabled(true);
+                        try {
+                            const client =
+                                StorageClientFactory.create(source);
+                            await client.testConnection();
+                            sendNotification(t("testSuccess"));
+                        } catch (error) {
+                            console.error(
+                                `Connection test failed for source ${source.name}`,
+                                error
+                            );
+                            sendNotification(t("testFailed"));
+                        } finally {
+                            button.setDisabled(false);
+                        }
+                    })
+            )
+            .addButton((button) =>
+                button
+                    .setButtonText(t("removeSource"))
+                    .setWarning()
+                    .onClick(async () => {
+                        this.plugin.settings.sources =
+                            this.plugin.settings.sources.filter(
+                                (s) => s.id !== source.id
+                            );
+                        await this.plugin.saveSettings();
+                        this.display();
+                    })
+            );
     }
 }
-

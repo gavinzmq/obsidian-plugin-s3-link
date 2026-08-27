@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Readable } from "stream";
 import Config from "../config";
-import { StorageSource } from "../settings/settings";
+import { StorageSource, getComposedEndpoint } from "../settings/settings";
 import DownloadManager from "./downloadManager";
 import { StorageClient } from "./storageClient";
 
@@ -29,8 +29,9 @@ export class AliyunOssClient implements StorageClient {
             secure: true,
         };
 
-        if (source.endpoint) {
-            options.endpoint = source.endpoint;
+        const endpoint = getComposedEndpoint(source);
+        if (endpoint) {
+            options.endpoint = endpoint;
         }
 
         this.client = new OSS(options);
@@ -98,6 +99,10 @@ export class AliyunOssClient implements StorageClient {
                 expires: Config.S3_SIGNED_LINK_EXPIRATION_TIME_SECONDS,
             })
         );
+    }
+
+    public async testConnection(): Promise<void> {
+        await this.client.list({ "max-keys": 1 });
     }
 
     private extractETag(etag: string | undefined): string | undefined {

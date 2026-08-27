@@ -2,6 +2,7 @@ import {
     S3Client,
     GetObjectCommand,
     ListObjectVersionsCommand,
+    ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
@@ -148,6 +149,15 @@ export class S3CompatibleClient implements StorageClient {
         return getSignedUrl(this.s3Client, command, {
             expiresIn: Config.S3_SIGNED_LINK_EXPIRATION_TIME_SECONDS,
         });
+    }
+
+    public async testConnection(): Promise<void> {
+        const command = new ListObjectsV2Command({
+            Bucket: this.bucketName,
+            MaxKeys: 1,
+        });
+
+        await this.s3Client.send(command);
     }
 
     private browserStreamToReadable(browserStream: ReadableStream): Readable {

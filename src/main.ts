@@ -14,6 +14,7 @@ import {
 import { PluginState } from "./pluginState";
 import { StatusBar } from "./ui/statusBar";
 import { sendNotification } from "./ui/notification";
+import { setLanguage } from "./i18n";
 import ClearCacheGlobalCommand from "./command/clearCacheGlobalCommand";
 import ClearCacheLocalCommand from "./command/clearCacheLocalCommand";
 import ReloadActiveLeafCommand from "./command/reloadActiveLeafCommand";
@@ -87,6 +88,7 @@ export default class S3LinkPlugin extends Plugin {
         }
 
         this.settings = settings;
+        setLanguage(this.settings.language || "en");
     }
 
     async saveSettings() {
@@ -95,6 +97,8 @@ export default class S3LinkPlugin extends Plugin {
         );
 
         await this.saveData(this.settings);
+
+        setLanguage(this.settings.language || "en");
 
         if (isPluginReadyState(this.settings)) {
             this.setState(PluginState.READY);

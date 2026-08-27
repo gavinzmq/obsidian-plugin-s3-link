@@ -130,6 +130,26 @@ export class TencentCosClient implements StorageClient {
         });
     }
 
+    public testConnection(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.cos.getBucket(
+                { Bucket: this.bucket, Region: this.region },
+                (err: unknown) => {
+                    if (err) {
+                        console.error(
+                            `${this.moduleName}: Connection test failed`,
+                            err
+                        );
+                        reject(err);
+                        return;
+                    }
+
+                    resolve();
+                }
+            );
+        });
+    }
+
     private extractETag(etag: string | undefined): string | undefined {
         if (!etag) {
             return undefined;
