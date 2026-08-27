@@ -329,6 +329,26 @@ export default class Cache {
     }
 
     /**
+     * Checks whether the file belonging to the given cached S3Link is actually
+     * present in the cache folder. A localStorage entry can be stale when a
+     * previous download failed or when the cache folder was cleared, so the
+     * cache entry alone is not sufficient proof that the file is available.
+     *
+     * @param s3Link the cached S3Link
+     *
+     * @returns true if the file exists in the cache folder, false otherwise
+     */
+    public isFileInCacheFolder(s3Link: S3Link): boolean {
+        const fileName = getCacheFileName(
+            s3Link.objectKey,
+            s3Link.versionToken
+        );
+        const filePath = `${this.getCachePath()}\\${fileName}`;
+
+        return fs.existsSync(filePath);
+    }
+
+    /**
      * Retrieves the path to the cache folder
      *
      * @returns the path to the cache folder

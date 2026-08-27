@@ -1,7 +1,9 @@
+import * as fs from "fs";
 import Cache from "../src/cache";
 import Config from "../src/config";
 import S3Link from "../src/model/s3Link";
 import S3SignedLink from "../src/model/s3SignedLink";
+import { getCacheFileName } from "../src/obsidianHelper";
 import { localStorageMock } from "./mock/localStorageMock";
 
 describe("Cache", () => {
@@ -115,6 +117,62 @@ describe("Cache", () => {
             const result = cache.isS3LinkCacheItemExpired(oldTimestamp);
 
             expect(result).toBe(true);
+        });
+    });
+
+    describe("isFileInCacheFolder", () => {
+        beforeEach(() => {
+            // minimal app mock so getCachePath() resolves a base path
+            (global as { app?: unknown }).app = {
+                vault: {
+                    adapter: {
+                        getBasePath: () => "/mock/vault",
+                    },
+                },
+            };
+        });
+
+        afterEach(() => {
+            delete (global as { app?: unknown }).app;
+            jest.restoreAllMocks();
+        });
+
+        it("should return true when the cached file exists in the cache folder", () => {
+            const mockObjectKey = "test.jpg";
+            const mockS3Link = new S3Link(
+                mockObjectKey,
+                Date.now(),
+                "version123",
+                mockSourceId
+            );
+            const fileName = getCacheFileName(mockObjectKey, "version123");
+
+            const existsSyncSpy = jest
+                .spyOn(fs, "existsSync")
+                .mockReturnValue(true);
+
+            const result = cache.isFileInCacheFolder(mockS3Link);
+
+            expect(result).toBe(true);
+            expect(existsSyncSpy).toHaveBeenCalledWith(
+                expect.stringContaining(fileName)
+            );
+        });
+
+        it("should return false when the cached file is missing from the cache folder", () => {
+            const mockObjectKey = "test.jpg";
+            const mockS3Link = new S3Link(
+                mockObjectKey,
+                Date.now(),
+                "version123",
+                mockSourceId
+            );
+
+            jest.spyOn(fs, "existsSync").mockReturnValue(false);
+
+            const result = cache.isFileInCacheFolder(mockS3Link);
+
+            expect(result).toBe(false);
         });
     });
 

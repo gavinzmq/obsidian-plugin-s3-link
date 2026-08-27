@@ -1,7 +1,8 @@
-import { TFile } from "obsidian";
+import { FileSystemAdapter, TFile } from "obsidian";
 import Config from "./config";
 import S3Link from "./model/s3Link";
 import * as path from "path";
+import * as fs from "fs";
 import { createHash } from "crypto";
 
 /**
@@ -44,6 +45,17 @@ export async function getVaultResourcePath(
         loadedFile = await getAbstractFileWithRetry(filePath);
 
         if (loadedFile == null) {
+            // Cache files are written with raw write streams, so the vault
+            // index may not have picked them up yet. Fall back to checking the
+            // file system directly and resolving the resource path through the
+            // adapter instead of treating the file as missing.
+            const adapter = app.vault.adapter as FileSystemAdapter;
+            const absolutePath = path.join(adapter.getBasePath(), filePath);
+
+            if (fs.existsSync(absolutePath)) {
+                return adapter.getResourcePath(filePath);
+            }
+
             throw new Error(`Could not load file '${filePath}'`);
         }
     } else if (arg instanceof TFile) {

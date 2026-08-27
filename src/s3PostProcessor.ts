@@ -137,8 +137,9 @@ export class S3PostProcessor {
 
             const cachedS3Link = this.cache.findItemInCache(sourceId, objectKey);
 
-            if (cachedS3Link != null) {
+            try {
                 if (
+                    cachedS3Link != null &&
                     this.cache.isS3LinkCacheItemExpired(cachedS3Link.lastUpdate)
                 ) {
                     console.debug(
@@ -159,13 +160,6 @@ export class S3PostProcessor {
                         return;
                     }
 
-                    // update cache
-                    this.cache.writeItemToCache(
-                        sourceId,
-                        objectKey,
-                        versionToken
-                    );
-
                     if (versionToken !== cachedS3Link.versionToken) {
                         console.log(
                             `${this.moduleName} - New versionToken ${versionToken} for objectKey ${objectKey}`
@@ -173,6 +167,13 @@ export class S3PostProcessor {
 
                         const loadedFile = await this.loadS3Item(
                             client,
+                            sourceId,
+                            objectKey,
+                            versionToken
+                        );
+
+                        // only mark the item as cached after the file was saved successfully
+                        this.cache.writeItemToCache(
                             sourceId,
                             objectKey,
                             versionToken
@@ -189,60 +190,75 @@ export class S3PostProcessor {
 
                         return;
                     }
-
-                    this.updateLinkReferences(
-                        htmlElements,
-                        cachedS3Link,
-                        rawKey,
-                        sourceId,
-                        objectKey,
-                        versionToken
-                    );
-                } else {
-                    console.debug(`${this.moduleName} - Cache not expired`);
-                    // update last checked timestamp
-                    this.cache.writeItemToCache(
-                        sourceId,
-                        objectKey,
-                        cachedS3Link.versionToken
-                    );
-                    this.updateLinkReferences(
-                        htmlElements,
-                        cachedS3Link,
-                        rawKey,
-                        sourceId,
-                        objectKey,
-                        cachedS3Link.versionToken
-                    );
                 }
-            } else {
-                try {
-                    const versionToken = await this.initNewS3Item(
-                        client,
-                        sourceId,
-                        objectKey
-                    );
-                    const loadedFile = await this.loadS3Item(
-                        client,
-                        sourceId,
-                        objectKey,
-                        versionToken
-                    );
 
-                    this.updateLinkReferences(
-                        htmlElements,
-                        loadedFile,
-                        rawKey,
-                        sourceId,
-                        objectKey,
-                        versionToken
+                if (cachedS3Link != null) {
+                    // The cache entry is still valid, but make sure the file is
+                    // actually present in the cache folder. A missing file (e.g.
+                    // a failed download or a cleared cache folder) would leave
+                    // the image broken while localStorage still claims the item
+                    // is cached.
+                    if (this.cache.isFileInCacheFolder(cachedS3Link)) {
+                        console.debug(
+                            `${this.moduleName} - Cache not expired`
+                        );
+                        // update last checked timestamp
+                        this.cache.writeItemToCache(
+                            sourceId,
+                            objectKey,
+                            cachedS3Link.versionToken
+                        );
+                        this.updateLinkReferences(
+                            htmlElements,
+                            cachedS3Link,
+                            rawKey,
+                            sourceId,
+                            objectKey,
+                            cachedS3Link.versionToken
+                        );
+
+                        continue;
+                    }
+
+                    console.warn(
+                        `${this.moduleName} - Cached file for ${objectKey} is missing from the cache folder, re-downloading`
                     );
-                } catch (error) {
-                    console.error(
-                        `${this.moduleName} - Error processing S3 link ${rawKey} ignoring link`,
-                        error
-                    );
+                    this.cache.removeItemFromCache(sourceId, objectKey);
                 }
+
+                // The item is not cached yet, or the cached file is gone:
+                // download it and only mark it as cached once the file has
+                // been saved successfully.
+                const versionToken = await this.initNewS3Item(
+                    client,
+                    objectKey
+                );
+                const loadedFile = await this.loadS3Item(
+                    client,
+                    sourceId,
+                    objectKey,
+                    versionToken
+                );
+
+                this.cache.writeItemToCache(
+                    sourceId,
+                    objectKey,
+                    versionToken
+                );
+
+                this.updateLinkReferences(
+                    htmlElements,
+                    loadedFile,
+                    rawKey,
+                    sourceId,
+                    objectKey,
+                    versionToken
+                );
+            } catch (error) {
+                console.error(
+                    `${this.moduleName} - Error processing S3 link ${rawKey} ignoring link`,
+                    error
+                );
             }
         }
     }
@@ -427,16 +443,25 @@ export class S3PostProcessor {
         });
     }
 
+    /**
+     * Retrieves the newest version token for the given objectKey from the
+     * remote storage. The item is deliberately not written to the cache here:
+     * it is only added to the cache after the file has been downloaded
+     * successfully (see processS3Links). Writing the cache entry first would
+     * leave an orphaned entry behind when the download fails.
+     *
+     * @param client the storage client
+     * @param objectKey the object key
+     *
+     * @returns the version token
+     */
     private async initNewS3Item(
         client: StorageClient,
-        sourceId: string,
         objectKey: string
     ): Promise<string> {
         const versionToken = await client.getVersionToken(objectKey);
 
         if (versionToken) {
-            this.cache.writeItemToCache(sourceId, objectKey, versionToken);
-
             return versionToken;
         }
 
