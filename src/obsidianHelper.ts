@@ -47,13 +47,37 @@ export async function getVaultResourcePath(
         if (loadedFile == null) {
             // Cache files are written with raw write streams, so the vault
             // index may not have picked them up yet. Fall back to checking the
-            // file system directly and resolving the resource path through the
-            // adapter instead of treating the file as missing.
+            // file system directly instead of treating the file as missing.
             const adapter = app.vault.adapter as FileSystemAdapter;
             const absolutePath = path.join(adapter.getBasePath(), filePath);
 
             if (fs.existsSync(absolutePath)) {
-                return adapter.getResourcePath(filePath);
+                // Prefer Obsidian's own resource path (app://local/...) so the
+                // image is served by Obsidian like any other vault file.
+                try {
+                    const resourcePath = adapter.getResourcePath(filePath);
+
+                    if (resourcePath) {
+                        console.debug(
+                            `Resolved cached file via adapter resource path: ${resourcePath}`
+                        );
+                        return resourcePath;
+                    }
+                } catch (error) {
+                    console.warn(
+                        `Failed to resolve adapter resource path for ${filePath}`,
+                        error
+                    );
+                }
+
+                // Last resort: a file:// URL that the renderer can always load
+                // directly from disk, even when the vault index has not picked
+                // the file up.
+                const fileUrl = adapter.getFilePath(filePath);
+                console.debug(
+                    `Resolved cached file via file URL: ${fileUrl}`
+                );
+                return fileUrl;
             }
 
             throw new Error(`Could not load file '${filePath}'`);

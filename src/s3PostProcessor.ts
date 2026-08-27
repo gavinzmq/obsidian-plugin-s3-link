@@ -9,7 +9,6 @@ import SpanResolver from "./resolver/spanResolver";
 import AnchorResolver from "./resolver/anchorResolver";
 import S3LinkPlugin from "./main";
 import S3Link from "./model/s3Link";
-import { sendNotification } from "./ui/notification";
 import { StorageClient } from "./network/storageClient";
 import { StorageClientFactory } from "./network/storageClientFactory";
 
@@ -179,7 +178,7 @@ export class S3PostProcessor {
                             versionToken
                         );
 
-                        this.updateLinkReferences(
+                        await this.updateLinkReferences(
                             htmlElements,
                             loadedFile,
                             rawKey,
@@ -208,7 +207,7 @@ export class S3PostProcessor {
                             objectKey,
                             cachedS3Link.versionToken
                         );
-                        this.updateLinkReferences(
+                        await this.updateLinkReferences(
                             htmlElements,
                             cachedS3Link,
                             rawKey,
@@ -246,7 +245,7 @@ export class S3PostProcessor {
                     versionToken
                 );
 
-                this.updateLinkReferences(
+                await this.updateLinkReferences(
                     htmlElements,
                     loadedFile,
                     rawKey,
@@ -336,7 +335,7 @@ export class S3PostProcessor {
      * @param objectKey The resolved object key
      * @param versionToken The version token
      */
-    private updateLinkReferences(
+    private async updateLinkReferences(
         htmlElements: HTMLElement[],
         resource: S3Link | TFile,
         rawKey: string,
@@ -348,7 +347,9 @@ export class S3PostProcessor {
             `${this.moduleName}::updateLinkReferences - Updating link references`
         );
 
-        htmlElements.forEach(async (htmlElement) => {
+        // Await each src update so Obsidian does not finalize the render (and
+        // discard our element reference) before the resource path is set.
+        for (const htmlElement of htmlElements) {
             if (htmlElement instanceof HTMLImageElement) {
                 htmlElement.src = await this.getResourcePath(
                     resource,
@@ -378,7 +379,7 @@ export class S3PostProcessor {
                 Config.S3_LINK_PLUGIN_DATA_ATTRIBUTE,
                 rawKey
             );
-        });
+        }
     }
 
     /**
@@ -401,10 +402,15 @@ export class S3PostProcessor {
         try {
             resourcePath = await getVaultResourcePath(resource);
         } catch (error) {
-            sendNotification(
-                "Failed to retrieve cached item. Item will be reloaded next time you open the file or reload Obsidian."
+            // Never delete the cache entry here: the file may exist on disk but
+            // just not be resolvable yet. Deleting it would remove a perfectly
+            // valid cached file and force a needless re-download loop. Stale
+            // entries are cleaned up by processS3Links when the file is
+            // actually missing.
+            console.warn(
+                `${this.moduleName} - Failed to resolve resource path for ${objectKey}`,
+                error
             );
-            this.cache.removeItemFromCache(sourceId, objectKey);
         }
 
         return resourcePath;

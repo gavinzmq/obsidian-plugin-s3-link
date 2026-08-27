@@ -147,14 +147,14 @@ describe("Cache", () => {
             );
             const fileName = getCacheFileName(mockObjectKey, "version123");
 
-            const existsSyncSpy = jest
-                .spyOn(fs, "existsSync")
-                .mockReturnValue(true);
+            const statSyncSpy = jest
+                .spyOn(fs, "statSync")
+                .mockReturnValue({ size: 1024 } as fs.Stats);
 
             const result = cache.isFileInCacheFolder(mockS3Link);
 
             expect(result).toBe(true);
-            expect(existsSyncSpy).toHaveBeenCalledWith(
+            expect(statSyncSpy).toHaveBeenCalledWith(
                 expect.stringContaining(fileName)
             );
         });
@@ -168,7 +168,25 @@ describe("Cache", () => {
                 mockSourceId
             );
 
-            jest.spyOn(fs, "existsSync").mockReturnValue(false);
+            jest.spyOn(fs, "statSync").mockImplementation(() => {
+                throw new Error("ENOENT: no such file");
+            });
+
+            const result = cache.isFileInCacheFolder(mockS3Link);
+
+            expect(result).toBe(false);
+        });
+
+        it("should return false when the cached file is empty", () => {
+            const mockObjectKey = "test.jpg";
+            const mockS3Link = new S3Link(
+                mockObjectKey,
+                Date.now(),
+                "version123",
+                mockSourceId
+            );
+
+            jest.spyOn(fs, "statSync").mockReturnValue({ size: 0 } as fs.Stats);
 
             const result = cache.isFileInCacheFolder(mockS3Link);
 

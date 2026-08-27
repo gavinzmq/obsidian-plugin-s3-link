@@ -71,6 +71,13 @@ export default class DownloadManager {
             versionToken
         );
 
+        // Some streams emit a trailing 'error' after 'end'. Do not mark a
+        // completed download as failed: doing so would delete a valid cached
+        // file that was already saved successfully.
+        if (downloadRecord.downloadState === DownloadState.COMPLETED) {
+            return;
+        }
+
         downloadRecord.downloadState = DownloadState.FAILED;
         this.writeDownloadRecord(
             sourceId,

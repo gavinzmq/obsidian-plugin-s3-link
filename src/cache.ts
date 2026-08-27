@@ -108,8 +108,22 @@ export default class Cache {
 
             this.addOpenStream(writeStream);
 
-            writeStream.on("finish", () => {
+            writeStream.on("finish", async () => {
                 this.removeOpenStream(writeStream);
+
+                // Raw fs writes are not tracked by the vault index, so verify
+                // the file landed on disk and log its size to spot empty or
+                // partial downloads early.
+                const stat = await fs.promises
+                    .stat(objectPath)
+                    .catch(() => null);
+
+                console.debug(
+                    `${this.moduleName}: Saved ${fileName} to cache folder (${
+                        stat ? stat.size : 0
+                    } bytes)`
+                );
+
                 resolve();
             });
             writeStream.on("error", () => {
@@ -345,7 +359,12 @@ export default class Cache {
         );
         const filePath = `${this.getCachePath()}\\${fileName}`;
 
-        return fs.existsSync(filePath);
+        try {
+            // treat empty files as missing so they get re-downloaded
+            return fs.statSync(filePath).size > 0;
+        } catch {
+            return false;
+        }
     }
 
     /**

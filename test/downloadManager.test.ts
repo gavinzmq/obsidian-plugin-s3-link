@@ -107,4 +107,34 @@ describe("DownloadManager", () => {
 
         expect(record.downloadState).toBe(DownloadState.COMPLETED);
     });
+
+    it("should ignore setErrorState after the download completed", () => {
+        const downloadManager = DownloadManager.getInstance();
+        downloadManager.addNewDownload(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
+        downloadManager.setCompletedState(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
+
+        // A trailing stream error after completion must not flip the record to
+        // FAILED (which would delete a valid cached file).
+        downloadManager.setErrorState(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
+
+        const record = JSON.parse(
+            window.localStorage.getItem(
+                `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/${mockSourceId}/testObject/testVersion`
+            ) as string
+        );
+
+        expect(record.downloadState).toBe(DownloadState.COMPLETED);
+    });
 });
