@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-27 — 版本号 1.0.1
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.1`
+- 更新 `manifest.json` 描述以反映多对象存储支持（AWS S3 / 腾讯 COS / 阿里 OSS / S3 兼容）
+
 ## 2026-08-27 — Release 工作流修复
 
 - 修复 `.github/workflows/release.yaml`：补充 `permissions: contents: write`（否则默认只读 token 无法建 Release）

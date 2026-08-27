@@ -1,6 +1,6 @@
 {
     "name": "obsidian-plugin-s3-link",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Obsidian plugin for including S3 links in notes",
     "main": "main.js",
     "scripts": {
