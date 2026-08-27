@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-27 — 版本号 1.0.5
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.5`
+- 打标签 `v1.0.5` 并发布（含缓存文件缺失时自动重新下载修复）
+
+## 2026-08-27 — 修复缓存文件缺失时图片不显示
+
+- 现象：localStorage 记录有效但 `s3_cache/` 对应文件缺失时，`getVaultResourcePath` 抛错 → 插件只删缓存不重新下载 → 图片不显示
+- 修复：新增 `Cache.isFileInCacheFolder()` 校验磁盘文件；`processS3Links` 缓存文件缺失时清除旧记录并立即重新下载；缓存记录改为文件保存成功后才写入（避免下载失败留下孤儿条目）；`getVaultResourcePath` 回退到文件系统检查 + `FileSystemAdapter.getResourcePath`（原生流写入的文件可能未被 Obsidian 索引）
+- 新增测试 2 例；jest 7 套件 49 用例通过
+
 ## 2026-08-27 — 版本号 1.0.4
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.4`
