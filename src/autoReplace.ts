@@ -1,5 +1,5 @@
 import Config from "./config";
-import { StorageSource } from "./settings/settings";
+import { StorageSource, decodeObjectKey } from "./settings/settings";
 
 interface SourceHostRule {
     source: StorageSource;
@@ -127,12 +127,16 @@ function matchUrl(
 
 /**
  * Converts an object key of the given source into the plugin's s3: link format.
+ * The object key is decoded so that the link contains the real key (and the
+ * storage SDK encodes it only once when building the request URL).
  * The source name prefix is only included for non-default sources.
  */
 function toS3Link(source: StorageSource, objectKey: string): string {
     const prefix = source.defaultSource ? "" : `${source.name}/`;
 
-    return `${Config.S3_LINK_PREFIX}${Config.S3_LINK_SPLITTER}${prefix}${objectKey}`;
+    return `${Config.S3_LINK_PREFIX}${Config.S3_LINK_SPLITTER}${prefix}${decodeObjectKey(
+        objectKey
+    )}`;
 }
 
 function replaceUrlsInText(

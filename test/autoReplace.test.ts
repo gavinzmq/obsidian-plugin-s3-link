@@ -1,5 +1,5 @@
 import { replaceRemoteUrls } from "../src/autoReplace";
-import { StorageSource } from "../src/settings/settings";
+import { resolveSourceKey, StorageSource } from "../src/settings/settings";
 
 function source(overrides: Partial<StorageSource>): StorageSource {
     return {
@@ -136,5 +136,60 @@ describe("replaceRemoteUrls", () => {
         const input = "https://mybucket.cos.ap-guangzhou.myqcloud.com/a.png";
 
         expect(replaceRemoteUrls(input, [])).toBe(input);
+    });
+
+    it("should decode percent-encoded keys in replaced links", () => {
+        const sources = [
+            source({
+                provider: "tencent-cos",
+                region: "ap-chengdu",
+                bucketName: "ob-image-1251733742",
+            }),
+        ];
+        const input =
+            "https://ob-image-1251733742.cos.ap-chengdu.myqcloud.com/1787809406112-%E6%9D%A8%E5%8A%A0%E4%BB%98.jpg";
+
+        expect(replaceRemoteUrls(input, sources)).toBe(
+            "s3:1787809406112-杨加付.jpg"
+        );
+    });
+
+    it("should decode percent-encoded object keys when resolving the source", () => {
+        const sources = [
+            source({
+                provider: "aws",
+                region: "us-east-1",
+                bucketName: "mybucket",
+            }),
+        ];
+        const settings = {
+            sources,
+            language: "en" as const,
+            autoReplaceEnabled: false,
+        };
+        const resolved = resolveSourceKey(
+            settings,
+            "1787809406112-%E6%9D%A8%E5%8A%A0%E4%BB%98.jpg"
+        );
+
+        expect(resolved.objectKey).toBe("1787809406112-杨加付.jpg");
+    });
+
+    it("should keep non-encoded object keys unchanged when resolving the source", () => {
+        const sources = [
+            source({
+                provider: "aws",
+                region: "us-east-1",
+                bucketName: "mybucket",
+            }),
+        ];
+        const settings = {
+            sources,
+            language: "en" as const,
+            autoReplaceEnabled: false,
+        };
+        const resolved = resolveSourceKey(settings, "photos/a.png");
+
+        expect(resolved.objectKey).toBe("photos/a.png");
     });
 });

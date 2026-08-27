@@ -1,22 +1,25 @@
 # Changelog
 
+## 2026-08-27 — 修复对象键双重 URL 编码导致的 404
+
+- 现象：COS 中文文件名 `https://.../1787809406112-%E6%9D%A8...` 经自动替换后，headObject 返回 404（SDK 对已编码 key 再次编码 → `%25`）
+- 修复：`settings.resolveSourceKey` 与 `autoReplace.toS3Link` 对 objectKey 做防御性 `decodeURIComponent`（`decodeObjectKey`，失败回退原值）
+- 链接存真实键名，存储 SDK 只编码一次即命中真实对象
+- 新增测试（编码键替换 / 来源解析解码 / 非编码键保持）3 例；jest 7 套件 47 用例通过
+
 ## 2026-08-27 — COS SDK 更换为浏览器版
 
-- `cos-nodejs-sdk-v5` → `cos-js-sdk-v5@^1.10.1`（Obsidian 运行于渲染进程，需浏览器 SDK）
-- `TencentCosClient`：`getObjectStream` → `getObject`，响应体（ArrayBuffer/Blob/string）经 `bodyToReadable` 转 Node Readable 后落盘
-- 代价：浏览器 SDK 整对象缓冲，大文件无增量流式（已记录局限）
+- `cos-nodejs-sdk-v5` → `cos-js-sdk-v5@^1.10.1`（Obsidian 运行于渲染进程）
+- `TencentCosClient`：`getObjectStream` → `getObject` + `bodyToReadable`；整对象缓冲
 - 副产品：`main.js` 约 4.4MB → 2.8MB
-- 验证：tsc / jest（7 套件 44 用例）/ eslint / esbuild 全部通过
-- 更新 `architecture.md`、`decisions/...`、`project.md`
 
 ## 2026-08-27 — 版本号 1.0.3
 
-- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.3`；打标签 `v1.0.3` 发布
+- 版本号更新为 `1.0.3`；打标签 `v1.0.3` 发布
 
 ## 2026-08-27 — 自动替换远程链接功能
 
-- 新增 `src/autoReplace.ts`；vault 监听（modify/create）+ `autoReplaceEnabled` 开关 + 防递归
-- i18n 新增 en/zh 文案；新增 `test/autoReplace.test.ts`（9 用例）
+- 新增 `src/autoReplace.ts`；vault 监听 + `autoReplaceEnabled` 开关 + 防递归；i18n 文案
 
 ## 2026-08-27 — 版本号 1.0.2
 

@@ -94,9 +94,25 @@ export function migrateLegacySettings(
 }
 
 /**
+ * Decodes a possibly percent-encoded object key (e.g. keys that contain the
+ * URL-encoded form of non-ASCII characters). Used to avoid double-encoding
+ * when the storage SDK encodes the key again when building the request URL.
+ * Falls back to the raw key if it is not valid percent-encoding.
+ *
+ * @param objectKey the raw object key
+ */
+export function decodeObjectKey(objectKey: string): string {
+    try {
+        return decodeURIComponent(objectKey);
+    } catch (error) {
+        return objectKey;
+    }
+}
+
+/**
  * Resolves a raw object key (optionally prefixed with `<sourceName>/`) to the
- * owning storage source and the plain object key. Links without a prefix use
- * the default source.
+ * owning storage source and the plain (decoded) object key. Links without a
+ * prefix use the default source.
  *
  * @param settings the plugin settings
  * @param rawKey the raw object key as written in the markdown link
@@ -118,14 +134,14 @@ export function resolveSourceKey(
         if (matchedSource) {
             return {
                 sourceId: matchedSource.id,
-                objectKey: parts.slice(1).join("/"),
+                objectKey: decodeObjectKey(parts.slice(1).join("/")),
             };
         }
     }
 
     return {
         sourceId: defaultSource ? defaultSource.id : "",
-        objectKey: rawKey,
+        objectKey: decodeObjectKey(rawKey),
     };
 }
 
