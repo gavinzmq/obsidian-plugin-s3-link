@@ -4,6 +4,8 @@ import { localStorageMock } from "./mock/localStorageMock";
 import Config from "../src/config";
 
 describe("DownloadManager", () => {
+    const mockSourceId = "source-test-1";
+
     beforeEach(() => {
         // update window object with mocked local storage
         Object.defineProperty(global.window, "localStorage", {
@@ -27,10 +29,14 @@ describe("DownloadManager", () => {
 
     it("should add a new download record", () => {
         const downloadManager = DownloadManager.getInstance();
-        downloadManager.addNewDownload("testObject", "testVersion");
+        downloadManager.addNewDownload(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
         const record = JSON.parse(
             window.localStorage.getItem(
-                `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/testObject/testVersion`
+                `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/${mockSourceId}/testObject/testVersion`
             ) as string
         );
 
@@ -39,11 +45,19 @@ describe("DownloadManager", () => {
 
     it("should update a download record to RUNNING state", () => {
         const downloadManager = DownloadManager.getInstance();
-        downloadManager.addNewDownload("testObject", "testVersion");
-        downloadManager.setRunningState("testObject", "testVersion");
+        downloadManager.addNewDownload(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
+        downloadManager.setRunningState(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
         const record = JSON.parse(
             window.localStorage.getItem(
-                `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/testObject/testVersion`
+                `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/${mockSourceId}/testObject/testVersion`
             ) as string
         );
 
@@ -52,12 +66,20 @@ describe("DownloadManager", () => {
 
     it("should update a download record to FAILED state and remove from cache", () => {
         const downloadManager = DownloadManager.getInstance();
-        downloadManager.addNewDownload("testObject", "testVersion");
-        downloadManager.setErrorState("testObject", "testVersion");
+        downloadManager.addNewDownload(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
+        downloadManager.setErrorState(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
 
         const record = JSON.parse(
             window.localStorage.getItem(
-                `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/testObject/testVersion`
+                `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/${mockSourceId}/testObject/testVersion`
             ) as string
         );
 
@@ -66,12 +88,20 @@ describe("DownloadManager", () => {
 
     it("should update a download record to COMPLETED state", () => {
         const downloadManager = DownloadManager.getInstance();
-        downloadManager.addNewDownload("testObject", "testVersion");
-        downloadManager.setCompletedState("testObject", "testVersion");
+        downloadManager.addNewDownload(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
+        downloadManager.setCompletedState(
+            mockSourceId,
+            "testObject",
+            "testVersion"
+        );
 
         const record = JSON.parse(
             window.localStorage.getItem(
-                `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/testObject/testVersion`
+                `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/${mockSourceId}/testObject/testVersion`
             ) as string
         );
 

@@ -6,6 +6,7 @@ import ImageResolver from "src/resolver/imageResolver";
 import VideoResolver from "src/resolver/videoResolver";
 import SpanResolver from "src/resolver/spanResolver";
 import AnchorResolver from "src/resolver/anchorResolver";
+import { resolveSourceKey } from "src/settings/settings";
 import { sendNotification } from "src/ui/notification";
 
 // TODO need to implement the difference between preview and edit mode
@@ -64,14 +65,17 @@ export default class ClearCacheLocalCommand extends Command {
             ),
         ];
 
-        for (let index = 0; index < objectKeys.length; index++) {
-            const element = objectKeys[index];
-
-            console.debug(
-                `Found link: ${element} should clear cache for that link`
+        for (const rawKey of objectKeys) {
+            const { sourceId, objectKey } = resolveSourceKey(
+                plugin.settings,
+                rawKey
             );
 
-            plugin.cache.removeItemFromCache(element);
+            console.debug(
+                `Found link: ${rawKey} should clear cache for that link`
+            );
+
+            plugin.cache.removeItemFromCache(sourceId, objectKey);
         }
 
         sendNotification(`Cleared cache of current leaf`);

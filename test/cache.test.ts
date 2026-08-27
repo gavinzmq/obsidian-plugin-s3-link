@@ -8,6 +8,7 @@ describe("Cache", () => {
     let cache: Cache;
     let originalSetItem: (key: string, value: string) => void;
     let originalRemoveItem: (key: string) => void;
+    const mockSourceId = "source-test-1";
 
     beforeEach(() => {
         // update window object with mocked local storage
@@ -35,13 +36,17 @@ describe("Cache", () => {
     });
 
     describe("writeItemToCache", () => {
-        it("should write an entry to localStorage for the given objectKey and versionId", () => {
+        it("should write an entry to localStorage for the given objectKey and versionToken", () => {
             const mockObjectKey = "testKey";
-            const mockVersionId = "12345";
-            const expectedKey = `${Config.PLUGIN_NAME}/${mockObjectKey}`;
+            const mockVersionToken = "12345";
+            const expectedKey = `${Config.PLUGIN_NAME}/${mockSourceId}/${mockObjectKey}`;
 
             window.localStorage.setItem = jest.fn();
-            cache.writeItemToCache(mockObjectKey, mockVersionId);
+            cache.writeItemToCache(
+                mockSourceId,
+                mockObjectKey,
+                mockVersionToken
+            );
 
             expect(localStorage.setItem).toHaveBeenCalledWith(
                 expectedKey,
@@ -56,7 +61,8 @@ describe("Cache", () => {
 
             const storedValue = JSON.parse(mockSetItemCall[1]);
             expect(storedValue.objectKey).toEqual(mockObjectKey);
-            expect(storedValue.versionId).toEqual(mockVersionId);
+            expect(storedValue.versionToken).toEqual(mockVersionToken);
+            expect(storedValue.sourceId).toEqual(mockSourceId);
             expect(storedValue.lastUpdate).toBeDefined();
         });
     });
@@ -67,14 +73,15 @@ describe("Cache", () => {
             const mockS3Link = new S3Link(
                 mockObjectKey,
                 Date.now(),
-                "version123"
+                "version123",
+                mockSourceId
             );
             localStorage.setItem(
-                `${Config.PLUGIN_NAME}/${mockObjectKey}`,
+                `${Config.PLUGIN_NAME}/${mockSourceId}/${mockObjectKey}`,
                 JSON.stringify(mockS3Link)
             );
 
-            const result = cache.findItemInCache(mockObjectKey);
+            const result = cache.findItemInCache(mockSourceId, mockObjectKey);
 
             expect(result).toBeInstanceOf(S3Link);
             expect(result?.objectKey).toBe(mockObjectKey);
@@ -84,7 +91,7 @@ describe("Cache", () => {
             const mockObjectKey = "testKey";
             localStorage.getItem("testKey");
 
-            const result = cache.findItemInCache(mockObjectKey);
+            const result = cache.findItemInCache(mockSourceId, mockObjectKey);
             expect(result).toBeNull();
         });
     });
@@ -115,10 +122,14 @@ describe("Cache", () => {
         it("should write the signedUrl for the given objectKey to localStorage", () => {
             const mockObjectKey = "testKey";
             const mockSignedUrl = "https://signed.url/test";
-            const expectedKey = `${Config.PLUGIN_NAME}/${Config.S3_SIGNED_LINK_PREFIX}/${mockObjectKey}`;
+            const expectedKey = `${Config.PLUGIN_NAME}/${mockSourceId}/${Config.S3_SIGNED_LINK_PREFIX}/${mockObjectKey}`;
 
             window.localStorage.setItem = jest.fn();
-            cache.writeSignedUrlToLocalStorage(mockObjectKey, mockSignedUrl);
+            cache.writeSignedUrlToLocalStorage(
+                mockSourceId,
+                mockObjectKey,
+                mockSignedUrl
+            );
 
             expect(localStorage.setItem).toHaveBeenCalledWith(
                 expectedKey,
@@ -151,11 +162,14 @@ describe("Cache", () => {
             );
 
             localStorage.setItem(
-                `${Config.PLUGIN_NAME}/${Config.S3_SIGNED_LINK_PREFIX}/${mockObjectKey}`,
+                `${Config.PLUGIN_NAME}/${mockSourceId}/${Config.S3_SIGNED_LINK_PREFIX}/${mockObjectKey}`,
                 JSON.stringify(mockS3SignedLink)
             );
 
-            const result = cache.findSignedUrlInCache(mockObjectKey);
+            const result = cache.findSignedUrlInCache(
+                mockSourceId,
+                mockObjectKey
+            );
             expect(result).toBeInstanceOf(S3SignedLink);
             expect(result?.objectKey).toBe(mockObjectKey);
         });
@@ -163,7 +177,7 @@ describe("Cache", () => {
         it("should return null for an invalid(expired) cached item", () => {
             const mockObjectKey = "testKey";
             const mockSignedUrl = "https://signed.url/test";
-            const expectedKey = `${Config.PLUGIN_NAME}/${Config.S3_SIGNED_LINK_PREFIX}/${mockObjectKey}`;
+            const expectedKey = `${Config.PLUGIN_NAME}/${mockSourceId}/${Config.S3_SIGNED_LINK_PREFIX}/${mockObjectKey}`;
             const mockS3SignedLink = new S3SignedLink(
                 mockObjectKey,
                 Date.now() -
@@ -174,14 +188,20 @@ describe("Cache", () => {
 
             window.localStorage.removeItem = jest.fn();
             localStorage.setItem(expectedKey, JSON.stringify(mockS3SignedLink));
-            const result = cache.findSignedUrlInCache(mockObjectKey);
+            const result = cache.findSignedUrlInCache(
+                mockSourceId,
+                mockObjectKey
+            );
             expect(result).toBeNull();
             expect(localStorage.removeItem).toHaveBeenCalledWith(expectedKey);
         });
 
         it("should return null if the objectKey does not exist in cache", () => {
             const mockObjectKey = "testKey";
-            const result = cache.findSignedUrlInCache(mockObjectKey);
+            const result = cache.findSignedUrlInCache(
+                mockSourceId,
+                mockObjectKey
+            );
 
             expect(result).toBeNull();
         });

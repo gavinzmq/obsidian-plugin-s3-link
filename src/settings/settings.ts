@@ -2,80 +2,168 @@ import Config from "../config";
 
 const moduleName = "Settings";
 
-export interface PluginSettings {
+export interface StorageSource {
+    id: string;
+    name: string;
+    provider: string;
+    endpoint: string;
     bucketName: string;
     region: string;
     accessKeyId: string;
     secretAccessKey: string;
-    profile: string;
+    pathStyle: boolean;
+    defaultSource: boolean;
+    signLinkEnabled: boolean;
 }
 
-export const DEFAULT_SETTINGS: Partial<PluginSettings> = {
-    bucketName: "",
-    region: "eu-central-1",
-    accessKeyId: "",
-    secretAccessKey: "",
-    profile: "",
+export interface PluginSettings {
+    sources: StorageSource[];
+}
+
+export const DEFAULT_SETTINGS: PluginSettings = {
+    sources: [],
 };
 
-export const REGIONS = {
-    "us-east-2": "US East (Ohio)",
-    "us-east-1": "US East (N. Virginia)",
-    "us-west-1": "US West (N. California)",
-    "us-west-2": "US West (Oregon)",
-    "af-south-1": "Africa (Cape Town)",
-    "ap-east-1": "Asia Pacific (Hong Kong)",
-    "ap-south-2": "Asia Pacific (Hyderabad)",
-    "ap-southeast-3": "Asia Pacific (Jakarta)",
-    "ap-southeast-4": "Asia Pacific (Melbourne)",
-    "ap-south-1": "Asia Pacific (Mumbai)",
-    "ap-northeast-3": "Asia Pacific (Osaka)",
-    "ap-northeast-2": "Asia Pacific (Seoul)",
-    "ap-southeast-1": "Asia Pacific (Singapore)",
-    "ap-southeast-2": "Asia Pacific (Sydney)",
-    "ap-northeast-1": "Asia Pacific (Tokyo)",
-    "ca-central-1": "Canada (Central)",
-    "eu-central-1": "Europe (Frankfurt)",
-    "eu-west-1": "Europe (Ireland)",
-    "eu-west-2": "Europe (London)",
-    "eu-south-1": "Europe (Milan)",
-    "eu-west-3": "Europe (Paris)",
-    "eu-south-2": "Europe (Spain)",
-    "eu-north-1": "Europe (Stockholm)",
-    "eu-central-2": "Europe (Zurich)",
-    "me-south-1": "Middle East (Bahrain)",
-    "me-central-1": "Middle East (UAE)",
-    "sa-east-1": "South America (São Paulo)",
-};
+/**
+ * Creates a new default storage source. Used for the "Add Source" action and
+ * to guarantee that at least one source exists.
+ */
+export function createDefaultSource(): StorageSource {
+    return {
+        id: generateSourceId(),
+        name: "Default",
+        provider: Config.PROVIDERS.AWS,
+        endpoint: "",
+        bucketName: "",
+        region: "",
+        accessKeyId: "",
+        secretAccessKey: "",
+        pathStyle: false,
+        defaultSource: true,
+        signLinkEnabled: true,
+    };
+}
+
+/**
+ * Generates a unique id for a storage source.
+ */
+export function generateSourceId(): string {
+    return `source-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+}
+
+/**
+ * Detects whether the given settings data uses the legacy (v1) single AWS
+ * source format (top-level bucketName/region/accessKeyId/... fields).
+ */
+export function isLegacySettings(data: unknown): boolean {
+    return (
+        data !== null &&
+        typeof data === "object" &&
+        (data as Record<string, unknown>).bucketName !== undefined
+    );
+}
+
+/**
+ * Migrates legacy (v1) settings into the new StorageSource based model.
+ *
+ * @param data the legacy settings object
+ */
+export function migrateLegacySettings(
+    data: Record<string, unknown>
+): PluginSettings {
+    const source: StorageSource = {
+        id: generateSourceId(),
+        name: "Default",
+        provider: Config.PROVIDERS.AWS,
+        endpoint: "",
+        bucketName: (data.bucketName as string) || "",
+        region: (data.region as string) || "",
+        accessKeyId: (data.accessKeyId as string) || "",
+        secretAccessKey: (data.secretAccessKey as string) || "",
+        pathStyle: false,
+        defaultSource: true,
+        signLinkEnabled: true,
+    };
+
+    return { sources: [source] };
+}
+
+/**
+ * Resolves a raw object key (optionally prefixed with `<sourceName>/`) to the
+ * owning storage source and the plain object key. Links without a prefix use
+ * the default source.
+ *
+ * @param settings the plugin settings
+ * @param rawKey the raw object key as written in the markdown link
+ */
+export function resolveSourceKey(
+    settings: PluginSettings,
+    rawKey: string
+): { sourceId: string; objectKey: string } {
+    const defaultSource = settings.sources.find(
+        (source) => source.defaultSource
+    );
+    const parts = rawKey.split(Config.SOURCE_SPLITTER);
+
+    if (parts.length > 1) {
+        const matchedSource = settings.sources.find(
+            (source) => source.name === parts[0]
+        );
+
+        if (matchedSource) {
+            return {
+                sourceId: matchedSource.id,
+                objectKey: parts.slice(1).join("/"),
+            };
+        }
+    }
+
+    return {
+        sourceId: defaultSource ? defaultSource.id : "",
+        objectKey: rawKey,
+    };
+}
 
 export function isPluginReadyState(settings: PluginSettings): boolean {
-    if (settings.bucketName === "") {
+    if (!settings.sources || settings.sources.length === 0) {
         console.info(
-            `${moduleName} - Settings is not in valid state, bucketName is empty`
+            `${moduleName} - Settings is not in valid state, no storage sources configured`
         );
 
         return false;
     }
 
-    if (settings.region === "") {
-        console.info(
-            `${moduleName} - Settings is not in valid state, region is empty`
-        );
-
-        return false;
-    }
-
-    if (
-        settings.profile === "" ||
-        settings.profile === Config.AWS_PROFILE_NAME_NONE
-    ) {
-        console.debug(
-            `${moduleName} - Profile in settings is not set checking for accessKeyId and secretAccessKey`
-        );
-
-        if (settings.accessKeyId === "" || settings.secretAccessKey === "") {
+    for (const source of settings.sources) {
+        if (source.bucketName === "") {
             console.info(
-                `${moduleName} - Settings is not in valid state, profile is empty and accessKeyId and secretAccessKey are empty`
+                `${moduleName} - Settings is not in valid state, bucketName is empty for source ${source.name}`
+            );
+
+            return false;
+        }
+
+        if (
+            source.provider === Config.PROVIDERS.AWS ||
+            source.provider === Config.PROVIDERS.S3_COMPATIBLE
+        ) {
+            if (source.region === "" && source.endpoint === "") {
+                console.info(
+                    `${moduleName} - Settings is not in valid state, region/endpoint is empty for source ${source.name}`
+                );
+
+                return false;
+            }
+        } else if (source.endpoint === "") {
+            console.info(
+                `${moduleName} - Settings is not in valid state, endpoint is empty for source ${source.name}`
+            );
+
+            return false;
+        }
+
+        if (source.accessKeyId === "" || source.secretAccessKey === "") {
+            console.info(
+                `${moduleName} - Settings is not in valid state, credentials are missing for source ${source.name}`
             );
 
             return false;
@@ -84,3 +172,4 @@ export function isPluginReadyState(settings: PluginSettings): boolean {
 
     return true;
 }
+

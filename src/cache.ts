@@ -6,6 +6,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { Readable } from "stream";
 import { createWriteStream } from "fs";
+import { getCacheFileName } from "./obsidianHelper";
 
 export default class Cache {
     private readonly moduleName = "Cache";
@@ -22,6 +23,30 @@ export default class Cache {
         } else {
             console.info(
                 `${this.moduleName}: S3 cache initialization already done`
+            );
+        }
+
+        await this.cleanupLegacyCacheIfNeeded();
+    }
+
+    /**
+     * When the cache schema version changes (e.g. after an upgrade that
+     * changes the cache file naming or the localStorage key layout) the whole
+     * cache is cleared once.
+     */
+    private async cleanupLegacyCacheIfNeeded() {
+        const currentVersion = window.localStorage.getItem(
+            Config.CACHE_SCHEMA_VERSION_KEY
+        );
+
+        if (currentVersion !== String(Config.CACHE_SCHEMA_VERSION)) {
+            console.info(
+                `${this.moduleName}: Cache schema changed, clearing cache`
+            );
+            await this.clearCache();
+            window.localStorage.setItem(
+                Config.CACHE_SCHEMA_VERSION_KEY,
+                String(Config.CACHE_SCHEMA_VERSION)
             );
         }
     }
@@ -61,11 +86,11 @@ export default class Cache {
 
     public async saveFileToCacheFolder(
         objectKey: string,
-        versionId: string,
+        versionToken: string,
         stream: Readable
     ): Promise<TFile | void> {
-        const fileExtension = path.extname(objectKey);
-        const objectPath = `${this.getCachePath()}\\${versionId}${fileExtension}`;
+        const fileName = getCacheFileName(objectKey, versionToken);
+        const objectPath = `${this.getCachePath()}\\${fileName}`;
 
         console.info(
             `${this.moduleName}: Saving object to cache folder: ${objectPath}`
@@ -83,15 +108,15 @@ export default class Cache {
 
             this.addOpenStream(writeStream);
 
-            writeStream.on("finish", function () {
+            writeStream.on("finish", () => {
                 this.removeOpenStream(writeStream);
                 resolve();
             });
-            writeStream.on("error", function () {
+            writeStream.on("error", () => {
                 this.removeOpenStream(writeStream);
                 reject();
             });
-            stream.on("error", function () {
+            stream.on("error", () => {
                 this.removeOpenStream(writeStream);
                 reject();
             });
@@ -123,44 +148,58 @@ export default class Cache {
      * Writes a new entry for the given objectKey to localStorage.
      * If one already exists, it will be overwritten.
      *
+     * @param sourceId the storage source id
      * @param objectKey
-     * @param versionId
+     * @param versionToken
      */
-    public writeItemToCache(objectKey: string, versionId: string) {
-        this.writeLocalStorage(objectKey, versionId);
+    public writeItemToCache(
+        sourceId: string,
+        objectKey: string,
+        versionToken: string
+    ) {
+        this.writeLocalStorage(sourceId, objectKey, versionToken);
     }
 
     /**
      * Writes a new entry for the given objectKey to localStorage.
      *
+     * @param sourceId the storage source id
      * @param objectKey The objectKey to write the S3Link for
-     * @param versionId The versionId to write to localStorage
+     * @param versionToken The versionToken to write to localStorage
      */
-    private writeLocalStorage(objectKey: string, versionId: string) {
-        const s3Link = new S3Link(objectKey, Date.now(), versionId);
+    private writeLocalStorage(
+        sourceId: string,
+        objectKey: string,
+        versionToken: string
+    ) {
+        const s3Link = new S3Link(objectKey, Date.now(), versionToken, sourceId);
 
         console.debug(`${this.moduleName}: writeLocalStorage for ${objectKey}`);
 
         window.localStorage.setItem(
-            `${Config.PLUGIN_NAME}/${objectKey}`,
+            `${Config.PLUGIN_NAME}/${sourceId}/${objectKey}`,
             JSON.stringify(s3Link)
         );
     }
 
     /**
-	 * Retrieves the S3Link object for the given objectKey from localStorage.
-	 * 
-	 * @param objectKey
-
-	 * @returns a S3Link object if the objectKey is present in the cache, null otherwise
-	 */
-    public findItemInCache(objectKey: string): S3Link | null {
+     * Retrieves the S3Link object for the given objectKey from localStorage.
+     *
+     * @param sourceId the storage source id
+     * @param objectKey
+     *
+     * @returns a S3Link object if the objectKey is present in the cache, null otherwise
+     */
+    public findItemInCache(
+        sourceId: string,
+        objectKey: string
+    ): S3Link | null {
         console.debug(
             `${this.moduleName}::findItemInCache - Looking for ${objectKey} in cache`
         );
 
         const s3Link: string | null = window.localStorage.getItem(
-            `${Config.PLUGIN_NAME}/${objectKey}`
+            `${Config.PLUGIN_NAME}/${sourceId}/${objectKey}`
         );
 
         if (s3Link) {
@@ -174,7 +213,8 @@ export default class Cache {
             return new S3Link(
                 parsedData.objectKey,
                 parsedData.lastUpdate,
-                parsedData.versionId
+                parsedData.versionToken,
+                parsedData.sourceId
             );
         }
 
@@ -188,10 +228,15 @@ export default class Cache {
     /**
      * Writes a new entry for the given objectKey to localStorage.
      *
+     * @param sourceId the storage source id
      * @param objectKey The objectKey to write the signedUrl for
      * @param signedUrl The signedUrl to write to localStorage
      */
-    public writeSignedUrlToLocalStorage(objectKey: string, signedUrl: string) {
+    public writeSignedUrlToLocalStorage(
+        sourceId: string,
+        objectKey: string,
+        signedUrl: string
+    ) {
         console.debug(
             `${this.moduleName}: writeSignedUrlToLocalStorage for ${objectKey}`
         );
@@ -199,7 +244,7 @@ export default class Cache {
         const s3SignedLink = new S3SignedLink(objectKey, Date.now(), signedUrl);
 
         window.localStorage.setItem(
-            `${Config.PLUGIN_NAME}/${Config.S3_SIGNED_LINK_PREFIX}/${objectKey}`,
+            `${Config.PLUGIN_NAME}/${sourceId}/${Config.S3_SIGNED_LINK_PREFIX}/${objectKey}`,
             JSON.stringify(s3SignedLink)
         );
     }
@@ -207,16 +252,20 @@ export default class Cache {
     /**
      * Retrieves the S3SignedLink object for the given objectKey from localStorage.
      *
+     * @param sourceId the storage source id
      * @param objectKey The objectKey to find the signedUrl for
      * @returns a S3SignedLink object if the objectKey is present in the cache, null otherwise
      */
-    public findSignedUrlInCache(objectKey: string): S3SignedLink | null {
+    public findSignedUrlInCache(
+        sourceId: string,
+        objectKey: string
+    ): S3SignedLink | null {
         console.debug(
             `${this.moduleName}::findSignedUrlInCache - Looking for ${objectKey} in cache`
         );
 
         const s3SignLink: string | null = window.localStorage.getItem(
-            `${Config.PLUGIN_NAME}/${Config.S3_SIGNED_LINK_PREFIX}/${objectKey}`
+            `${Config.PLUGIN_NAME}/${sourceId}/${Config.S3_SIGNED_LINK_PREFIX}/${objectKey}`
         );
 
         if (s3SignLink) {
@@ -232,7 +281,7 @@ export default class Cache {
                     `${this.moduleName}: Cache item for ${objectKey} expired, removing from localStorage}`
                 );
                 window.localStorage.removeItem(
-                    `${Config.PLUGIN_NAME}/${Config.S3_SIGNED_LINK_PREFIX}/${objectKey}`
+                    `${Config.PLUGIN_NAME}/${sourceId}/${Config.S3_SIGNED_LINK_PREFIX}/${objectKey}`
                 );
                 return null;
             }
@@ -359,25 +408,27 @@ export default class Cache {
      * It is important to remove the file from the cache folder first, because the localStorage contains the
      * necessary information to find the file in the cache folder.
      *
+     * @param sourceId the storage source id
      * @param objectKey
      */
-    public removeItemFromCache(objectKey: string) {
-        this.removeItemFromCacheFolder(objectKey);
-        this.removeItemFromLocalStorage(objectKey);
+    public removeItemFromCache(sourceId: string, objectKey: string) {
+        this.removeItemFromCacheFolder(sourceId, objectKey);
+        this.removeItemFromLocalStorage(sourceId, objectKey);
     }
 
     /**
      * Removes a specific objectKey from the cache folder
      *
+     * @param sourceId the storage source id
      * @param objectKey
      * @returns
      */
-    private removeItemFromCacheFolder(objectKey: string) {
+    private removeItemFromCacheFolder(sourceId: string, objectKey: string) {
         console.debug(
             `${this.moduleName}::removeItemFromCacheFolder - Removing ${objectKey} from cache folder`
         );
 
-        const s3Link = this.findItemInCache(objectKey);
+        const s3Link = this.findItemInCache(sourceId, objectKey);
 
         if (!s3Link) {
             console.debug(
@@ -386,7 +437,7 @@ export default class Cache {
             return;
         }
 
-        const fileName = `${s3Link.versionId}${path.extname(objectKey)}`;
+        const fileName = getCacheFileName(objectKey, s3Link.versionToken);
         const filePath = `${this.getCachePath()}\\${fileName}`;
 
         if (fs.existsSync(filePath)) {
@@ -402,34 +453,25 @@ export default class Cache {
     }
 
     /**
-     * Removes a specific objectKey from localStorage
+     * Removes a specific objectKey from localStorage (both normal and signed links)
      *
+     * @param sourceId the storage source id
      * @param objectKey
      */
-    private removeItemFromLocalStorage(objectKey: string) {
+    private removeItemFromLocalStorage(sourceId: string, objectKey: string) {
         console.debug(
             `${this.moduleName}::removeItemFromLocalStorage - Removing ${objectKey} from localStorage`
         );
 
-        const localStorageItems = Object.keys(window.localStorage);
+        const normalKey = `${Config.PLUGIN_NAME}/${sourceId}/${objectKey}`;
+        const signedKey = `${Config.PLUGIN_NAME}/${sourceId}/${Config.S3_SIGNED_LINK_PREFIX}/${objectKey}`;
 
-        localStorageItems.forEach((key) => {
-            if (key === `${Config.PLUGIN_NAME}/${objectKey}`) {
-                localStorage.removeItem(key);
+        window.localStorage.removeItem(normalKey);
+        window.localStorage.removeItem(signedKey);
 
-                console.debug(
-                    `${this.moduleName}: Removed item with key: ${key}`
-                );
-            }
-
-            if (
-                key ===
-                `${Config.PLUGIN_NAME}/${Config.S3_SIGNED_LINK_PREFIX}/${objectKey}`
-            ) {
-                console.debug(
-                    `${this.moduleName}: Removed sign item with key: ${key}`
-                );
-            }
-        });
+        console.debug(
+            `${this.moduleName}: Removed item with key: ${normalKey} and ${signedKey}`
+        );
     }
 }
+

@@ -38,7 +38,9 @@
     },
     "dependencies": {
         "@aws-sdk/client-s3": "^3.379.1",
-        "@aws-sdk/s3-request-presigner": "^3.379.1"
+        "@aws-sdk/s3-request-presigner": "^3.379.1",
+        "ali-oss": "^6.20.0",
+        "cos-nodejs-sdk-v5": "^2.13.0"
     },
     "jest": {
         "transform": {
@@ -50,6 +52,9 @@
             "/node_modules/",
             "/test/mock/"
         ],
+        "moduleNameMapper": {
+            "^obsidian$": "<rootDir>/test/mock/obsidianMock.ts"
+        },
         "moduleFileExtensions": [
             "ts",
             "tsx",

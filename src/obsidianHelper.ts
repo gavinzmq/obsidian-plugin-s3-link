@@ -2,6 +2,25 @@ import { TFile } from "obsidian";
 import Config from "./config";
 import S3Link from "./model/s3Link";
 import * as path from "path";
+import { createHash } from "crypto";
+
+/**
+ * Computes the file name used in the cache folder for a given object key and
+ * version token. The token is hashed (sha1) to keep file names filesystem-safe
+ * for arbitrary tokens (S3 VersionId, COS/OSS ETag, ...).
+ *
+ * @param objectKey the object key
+ * @param versionToken the version token
+ */
+export function getCacheFileName(
+    objectKey: string,
+    versionToken: string
+): string {
+    const fileExtension = path.extname(objectKey);
+    const hash = createHash("sha1").update(versionToken).digest("hex");
+
+    return `${hash}${fileExtension}`;
+}
 
 export async function getVaultResourcePath(arg: S3Link): Promise<string>;
 
@@ -17,8 +36,10 @@ export async function getVaultResourcePath(
     let loadedFile: TFile | null = null;
 
     if (arg instanceof S3Link) {
-        const fileExtension = path.extname(arg.objectKey);
-        const filePath = `${Config.CACHE_FOLDER}/${arg.versionId}${fileExtension}`;
+        const filePath = `${Config.CACHE_FOLDER}/${getCacheFileName(
+            arg.objectKey,
+            arg.versionToken
+        )}`;
 
         loadedFile = await getAbstractFileWithRetry(filePath);
 

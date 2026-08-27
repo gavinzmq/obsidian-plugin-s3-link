@@ -19,37 +19,86 @@ export default class DownloadManager {
         return DownloadManager.instance;
     }
 
-    public addNewDownload(objectKey: string, versionId: string) {
+    public addNewDownload(
+        sourceId: string,
+        objectKey: string,
+        versionToken: string
+    ) {
         const downloadRecord: DownloadRecord = {
+            sourceId: sourceId,
             objectKey: objectKey,
-            versionId: versionId,
+            versionToken: versionToken,
             startedAt: Date.now(),
             downloadState: DownloadState.PENDING,
         };
 
-        this.writeDownloadRecord(objectKey, versionId, downloadRecord);
+        this.writeDownloadRecord(
+            sourceId,
+            objectKey,
+            versionToken,
+            downloadRecord
+        );
     }
 
-    public setRunningState(objectKey: string, versionId: string) {
-        const downloadRecord = this.getDownloadRecord(objectKey, versionId);
+    public setRunningState(
+        sourceId: string,
+        objectKey: string,
+        versionToken: string
+    ) {
+        const downloadRecord = this.getDownloadRecord(
+            sourceId,
+            objectKey,
+            versionToken
+        );
 
         downloadRecord.downloadState = DownloadState.RUNNING;
-        this.writeDownloadRecord(objectKey, versionId, downloadRecord);
+        this.writeDownloadRecord(
+            sourceId,
+            objectKey,
+            versionToken,
+            downloadRecord
+        );
     }
 
-    public setErrorState(objectKey: string, versionId: string) {
-        const downloadRecord = this.getDownloadRecord(objectKey, versionId);
+    public setErrorState(
+        sourceId: string,
+        objectKey: string,
+        versionToken: string
+    ) {
+        const downloadRecord = this.getDownloadRecord(
+            sourceId,
+            objectKey,
+            versionToken
+        );
 
         downloadRecord.downloadState = DownloadState.FAILED;
-        this.writeDownloadRecord(objectKey, versionId, downloadRecord);
-        this.cache.removeItemFromCache(objectKey);
+        this.writeDownloadRecord(
+            sourceId,
+            objectKey,
+            versionToken,
+            downloadRecord
+        );
+        this.cache.removeItemFromCache(sourceId, objectKey);
     }
 
-    public setCompletedState(objectKey: string, versionId: string) {
-        const downloadRecord = this.getDownloadRecord(objectKey, versionId);
+    public setCompletedState(
+        sourceId: string,
+        objectKey: string,
+        versionToken: string
+    ) {
+        const downloadRecord = this.getDownloadRecord(
+            sourceId,
+            objectKey,
+            versionToken
+        );
 
         downloadRecord.downloadState = DownloadState.COMPLETED;
-        this.writeDownloadRecord(objectKey, versionId, downloadRecord);
+        this.writeDownloadRecord(
+            sourceId,
+            objectKey,
+            versionToken,
+            downloadRecord
+        );
     }
 
     public cleanUnfinishedDownloads() {
@@ -69,7 +118,10 @@ export default class DownloadManager {
                     console.log(
                         `${this.moduleName} - Cleaning unfinished download for ${downloadRecord.objectKey}`
                     );
-                    this.cache.removeItemFromCache(downloadRecord.objectKey);
+                    this.cache.removeItemFromCache(
+                        downloadRecord.sourceId,
+                        downloadRecord.objectKey
+                    );
                     window.localStorage.removeItem(key);
                 }
             }
@@ -77,24 +129,29 @@ export default class DownloadManager {
     }
 
     private writeDownloadRecord(
+        sourceId: string,
         objectKey: string,
-        versionId: string,
+        versionToken: string,
         downloadRecord: DownloadRecord
     ) {
         window.localStorage.setItem(
-            `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/${objectKey}/${versionId}`,
+            `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/${sourceId}/${objectKey}/${versionToken}`,
             JSON.stringify(downloadRecord)
         );
     }
 
-    private getDownloadRecord(objectKey: string, versionId: string) {
+    private getDownloadRecord(
+        sourceId: string,
+        objectKey: string,
+        versionToken: string
+    ) {
         const record = window.localStorage.getItem(
-            `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/${objectKey}/${versionId}`
+            `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/${sourceId}/${objectKey}/${versionToken}`
         );
 
         if (!record) {
             throw new Error(
-                `Download record not found for objectKey: ${objectKey}, versionId: ${versionId}`
+                `Download record not found for objectKey: ${objectKey}, versionToken: ${versionToken}`
             );
         }
 

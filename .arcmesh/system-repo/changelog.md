@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-27 — 多对象存储支持实现
+
+- 实现 `decisions/2026-08-27-multi-cloud-storage-support.md`：`StorageClient` 接口 + `S3CompatibleClient` / `TencentCosClient` / `AliyunOssClient` + `StorageClientFactory`
+- 设置改为多 `StorageSource` 模型，UI 全文本输入；移除 AWS Region / Profile 下拉；`src/aws/` 目录下线
+- 缓存改造：`versionToken` 统一（AWS VersionId / COS·OSS ETag）、sha1 缓存文件名、sourceId 键前缀、`CACHE_SCHEMA_VERSION=2` 自动清理；修复签名键删除 bug
+- 链接语法向后兼容，新增可选 `s3:[sourceName/objectKey]` 多源前缀
+- 新增依赖：`cos-nodejs-sdk-v5`、`ali-oss`
+- 测试：新增 `test/mock/obsidianMock.ts` + `moduleNameMapper`（修复 obsidian 运行时解析）；cache/downloadManager 测试适配新 API；6 套件 / 35 用例通过
+- 更新 `architecture.md`（§1–§10）、`project.md`
+
 ## 2026-08-27 — 多对象存储支持设计
 
 - 新增 `decisions/2026-08-27-multi-cloud-storage-support.md`：腾讯云 COS / 阿里云 OSS / S3 兼容存储支持设计（Provider Adapter、全 input UI、版本令牌、设置迁移）

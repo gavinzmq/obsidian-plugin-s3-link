@@ -7,6 +7,9 @@ import {
     PluginSettings,
     DEFAULT_SETTINGS,
     isPluginReadyState,
+    createDefaultSource,
+    isLegacySettings,
+    migrateLegacySettings,
 } from "./settings/settings";
 import { PluginState } from "./pluginState";
 import { StatusBar } from "./ui/statusBar";
@@ -64,11 +67,26 @@ export default class S3LinkPlugin extends Plugin {
             `${this.moduleName}::loadSettings - Loading settings for ${Config.PLUGIN_NAME}`
         );
 
-        this.settings = Object.assign(
-            {},
-            DEFAULT_SETTINGS,
-            await this.loadData()
-        );
+        const data = await this.loadData();
+        let settings: PluginSettings;
+
+        if (isLegacySettings(data)) {
+            console.info(
+                `${this.moduleName}::loadSettings - Migrating legacy settings to storage sources`
+            );
+            settings = migrateLegacySettings(
+                data as Record<string, unknown>
+            );
+        } else {
+            settings = Object.assign({}, DEFAULT_SETTINGS, data || {});
+        }
+
+        // guarantee that at least one storage source exists
+        if (!settings.sources || settings.sources.length === 0) {
+            settings.sources = [createDefaultSource()];
+        }
+
+        this.settings = settings;
     }
 
     async saveSettings() {

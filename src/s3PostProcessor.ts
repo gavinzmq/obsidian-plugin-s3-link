@@ -1,9 +1,8 @@
 import { TFile } from "obsidian";
 import Cache from "./cache";
 import Config from "./config";
-import { getVaultResourcePath } from "./obsidianHelper";
-import { Client } from "./network/client";
-import { PluginSettings } from "./settings/settings";
+import { getCacheFileName, getVaultResourcePath } from "./obsidianHelper";
+import { PluginSettings, resolveSourceKey } from "./settings/settings";
 import ImageResolver from "./resolver/imageResolver";
 import VideoResolver from "./resolver/videoResolver";
 import SpanResolver from "./resolver/spanResolver";
@@ -11,27 +10,50 @@ import AnchorResolver from "./resolver/anchorResolver";
 import S3LinkPlugin from "./main";
 import S3Link from "./model/s3Link";
 import { sendNotification } from "./ui/notification";
-import * as path from "path";
+import { StorageClient } from "./network/storageClient";
+import { StorageClientFactory } from "./network/storageClientFactory";
 
 export class S3PostProcessor {
     private readonly moduleName = "S3PostProcessor";
-    private client: Client;
     private cache: Cache;
     private imageResolver: ImageResolver;
     private videoResolver: VideoResolver;
     private spanResolver: SpanResolver;
     private anchorResolver: AnchorResolver;
     private pluginSettings: PluginSettings;
+    private clients: Map<string, StorageClient> = new Map();
 
     constructor(plugin: S3LinkPlugin, cache: Cache, settings: PluginSettings) {
         this.cache = cache;
-        this.client = new Client(settings, plugin);
         this.imageResolver = new ImageResolver();
         this.videoResolver = new VideoResolver();
         this.spanResolver = new SpanResolver();
         this.anchorResolver = new AnchorResolver();
         this.pluginSettings = settings;
-        this.client.initializeS3Client(this.pluginSettings);
+        this.buildClients(settings);
+    }
+
+    /**
+     * Builds the storage client map for all configured sources.
+     *
+     * @param settings PluginSettings containing the storage sources
+     */
+    private buildClients(settings: PluginSettings) {
+        this.clients.clear();
+
+        settings.sources.forEach((source) => {
+            try {
+                this.clients.set(
+                    source.id,
+                    StorageClientFactory.create(source)
+                );
+            } catch (error) {
+                console.error(
+                    `${this.moduleName} - Failed to create client for source ${source.name}`,
+                    error
+                );
+            }
+        });
     }
 
     /**
@@ -40,8 +62,9 @@ export class S3PostProcessor {
      * @param settings PluginSettings containing the new settings
      */
     public onSettingsChanged(settings: PluginSettings) {
-        console.debug("Settings changed, reinitializing s3Client...");
-        this.client.initializeS3Client(settings);
+        console.debug("Settings changed, rebuilding storage clients...");
+        this.pluginSettings = settings;
+        this.buildClients(settings);
     }
 
     /**
@@ -89,17 +112,30 @@ export class S3PostProcessor {
     /**
      * Work through all resolved S3 links and process them
      *  - If the link is already cached, update the HTML elements with the new resource path
-     *  - If the link is not cached, load the file from S3 and update the HTML elements with the new resource path
+     *  - If the link is not cached, load the file from the storage and update the HTML elements
      *
      * @param resolvedS3Links A map of all resolved S3 links and the corresponding HTML elements
      */
     private async processS3Links(resolvedS3Links: Map<string, HTMLElement[]>) {
-        for (const [objectKey, htmlElements] of resolvedS3Links) {
+        for (const [rawKey, htmlElements] of resolvedS3Links) {
+            const { sourceId, objectKey } = resolveSourceKey(
+                this.pluginSettings,
+                rawKey
+            );
+            const client = this.clients.get(sourceId);
+
+            if (!client) {
+                console.warn(
+                    `${this.moduleName} - No client for source ${sourceId}, skipping ${rawKey}`
+                );
+                continue;
+            }
+
             console.debug(
-                `${this.moduleName} - Processing S3 link ${objectKey}`
+                `${this.moduleName} - Processing S3 link ${rawKey}`
             );
 
-            const cachedS3Link = this.cache.findItemInCache(objectKey);
+            const cachedS3Link = this.cache.findItemInCache(sourceId, objectKey);
 
             if (cachedS3Link != null) {
                 if (
@@ -109,37 +145,46 @@ export class S3PostProcessor {
                         `${this.moduleName} - Cache for ${objectKey} expired`
                     );
 
-                    const versionId = await this.getNewestVersionId(
+                    const versionToken = await this.getNewestVersionToken(
+                        client,
                         objectKey,
                         cachedS3Link
                     );
 
-                    if (versionId == null) {
+                    if (versionToken == null) {
                         console.error(
-                            `${this.moduleName} - Failed to retrieve versionId for objectKey ${objectKey}`
+                            `${this.moduleName} - Failed to retrieve versionToken for objectKey ${objectKey}`
                         );
 
                         return;
                     }
 
                     // update cache
-                    this.cache.writeItemToCache(objectKey, versionId);
+                    this.cache.writeItemToCache(
+                        sourceId,
+                        objectKey,
+                        versionToken
+                    );
 
-                    if (versionId != cachedS3Link.versionId) {
+                    if (versionToken !== cachedS3Link.versionToken) {
                         console.log(
-                            `${this.moduleName} - New versionId ${versionId} for objectKey ${objectKey}`
+                            `${this.moduleName} - New versionToken ${versionToken} for objectKey ${objectKey}`
                         );
 
                         const loadedFile = await this.loadS3Item(
+                            client,
+                            sourceId,
                             objectKey,
-                            versionId
+                            versionToken
                         );
 
                         this.updateLinkReferences(
                             htmlElements,
                             loadedFile,
+                            rawKey,
+                            sourceId,
                             objectKey,
-                            versionId
+                            versionToken
                         );
 
                         return;
@@ -148,40 +193,53 @@ export class S3PostProcessor {
                     this.updateLinkReferences(
                         htmlElements,
                         cachedS3Link,
+                        rawKey,
+                        sourceId,
                         objectKey,
-                        versionId
+                        versionToken
                     );
                 } else {
                     console.debug(`${this.moduleName} - Cache not expired`);
                     // update last checked timestamp
                     this.cache.writeItemToCache(
+                        sourceId,
                         objectKey,
-                        cachedS3Link.versionId
+                        cachedS3Link.versionToken
                     );
                     this.updateLinkReferences(
                         htmlElements,
                         cachedS3Link,
+                        rawKey,
+                        sourceId,
                         objectKey,
-                        cachedS3Link.versionId
+                        cachedS3Link.versionToken
                     );
                 }
             } else {
                 try {
-                    const versionId = await this.initNewS3Item(objectKey);
+                    const versionToken = await this.initNewS3Item(
+                        client,
+                        sourceId,
+                        objectKey
+                    );
                     const loadedFile = await this.loadS3Item(
+                        client,
+                        sourceId,
                         objectKey,
-                        versionId
+                        versionToken
                     );
 
                     this.updateLinkReferences(
                         htmlElements,
                         loadedFile,
+                        rawKey,
+                        sourceId,
                         objectKey,
-                        versionId
+                        versionToken
                     );
                 } catch (error) {
                     console.error(
-                        `${this.moduleName} - Error processing S3 link ${objectKey} ignoring link`,
+                        `${this.moduleName} - Error processing S3 link ${rawKey} ignoring link`,
                         error
                     );
                 }
@@ -192,39 +250,59 @@ export class S3PostProcessor {
     /**
      * Work through all resolved S3 signLinks and process them
      *  - If the link is already cached, update the HTML elements with the new resource path(signed url)
-     *  - If the link is not cached, get a signed URL from S3 and update the HTML elements with the new resource path
+     *  - If the link is not cached, get a signed URL from the storage and update the HTML elements
      *
      * @param resolvedS3SignLinks A map of all resolved S3 signLinks and the corresponding HTML elements
      */
     private async processS3SignLinks(
         resolvedS3SignLinks: Map<string, HTMLElement[]>
     ) {
-        for (const [objectKey, htmlElements] of resolvedS3SignLinks) {
+        for (const [rawKey, htmlElements] of resolvedS3SignLinks) {
+            const { sourceId, objectKey } = resolveSourceKey(
+                this.pluginSettings,
+                rawKey
+            );
+            const client = this.clients.get(sourceId);
+
+            if (!client) {
+                console.warn(
+                    `${this.moduleName} - No client for source ${sourceId}, skipping ${rawKey}`
+                );
+                continue;
+            }
+
             console.debug(
-                `${this.moduleName} - Processing S3 signLink ${objectKey}`
+                `${this.moduleName} - Processing S3 signLink ${rawKey}`
             );
 
-            const cachedS3SignLink = this.cache.findSignedUrlInCache(objectKey);
+            const cachedS3SignLink = this.cache.findSignedUrlInCache(
+                sourceId,
+                objectKey
+            );
 
             if (cachedS3SignLink != null) {
                 this.updateSignLinkReferences(
                     htmlElements,
-                    objectKey,
+                    rawKey,
                     cachedS3SignLink.signedUrl
                 );
             } else {
                 try {
-                    const signedUrl = await this.getS3SignedUrl(objectKey);
+                    const signedUrl = await this.getS3SignedUrl(
+                        client,
+                        sourceId,
+                        objectKey
+                    );
                     if (signedUrl != null) {
                         this.updateSignLinkReferences(
                             htmlElements,
-                            objectKey,
+                            rawKey,
                             signedUrl
                         );
                     }
                 } catch (error) {
                     console.error(
-                        `${this.moduleName} - Error processing S3 signLink ${objectKey} ignoring link`,
+                        `${this.moduleName} - Error processing S3 signLink ${rawKey} ignoring link`,
                         error
                     );
                 }
@@ -236,13 +314,19 @@ export class S3PostProcessor {
      * Update the HTML elements with the new resource path
      *
      * @param htmlElements A list of HTML elements that need to be updated
-     * @param resourcePath The new resource path to the local cached file
+     * @param resource The cached resource (S3Link or TFile)
+     * @param rawKey The raw object key as authored in the link (may include source prefix)
+     * @param sourceId The storage source id
+     * @param objectKey The resolved object key
+     * @param versionToken The version token
      */
     private updateLinkReferences(
         htmlElements: HTMLElement[],
         resource: S3Link | TFile,
+        rawKey: string,
+        sourceId: string,
         objectKey: string,
-        versionId: string
+        versionToken: string
     ) {
         console.debug(
             `${this.moduleName}::updateLinkReferences - Updating link references`
@@ -252,28 +336,31 @@ export class S3PostProcessor {
             if (htmlElement instanceof HTMLImageElement) {
                 htmlElement.src = await this.getResourcePath(
                     resource,
+                    sourceId,
                     objectKey
                 );
             } else if (htmlElement instanceof HTMLVideoElement) {
                 htmlElement.autoplay = false;
                 htmlElement.src = await this.getResourcePath(
                     resource,
+                    sourceId,
                     objectKey
                 );
             } else if (htmlElement instanceof HTMLSpanElement) {
                 htmlElement.setAttribute(
                     "src",
-                    `${versionId}${path.extname(objectKey)}`
+                    getCacheFileName(objectKey, versionToken)
                 );
             } else if (htmlElement instanceof HTMLAnchorElement) {
-                htmlElement.href = `${
-                    Config.OBSIDIAN_APP_LINK_PREFIX
-                }${versionId}${path.extname(objectKey)}`;
+                htmlElement.href = `${Config.OBSIDIAN_APP_LINK_PREFIX}${getCacheFileName(
+                    objectKey,
+                    versionToken
+                )}`;
             }
 
             htmlElement.setAttribute(
                 Config.S3_LINK_PLUGIN_DATA_ATTRIBUTE,
-                objectKey
+                rawKey
             );
         });
     }
@@ -284,10 +371,15 @@ export class S3PostProcessor {
      * for elements that actually need it.
      *
      * @param resource
+     * @param sourceId
      * @param objectKey
      * @returns
      */
-    private async getResourcePath(resource: S3Link | TFile, objectKey: string) {
+    private async getResourcePath(
+        resource: S3Link | TFile,
+        sourceId: string,
+        objectKey: string
+    ) {
         let resourcePath = "";
 
         try {
@@ -296,7 +388,7 @@ export class S3PostProcessor {
             sendNotification(
                 "Failed to retrieve cached item. Item will be reloaded next time you open the file or reload Obsidian."
             );
-            this.cache.removeItemFromCache(objectKey);
+            this.cache.removeItemFromCache(sourceId, objectKey);
         }
 
         return resourcePath;
@@ -304,7 +396,7 @@ export class S3PostProcessor {
 
     private updateSignLinkReferences(
         htmlElements: HTMLElement[],
-        objectKey: string,
+        rawKey: string,
         signedUrl: string
     ) {
         console.debug(
@@ -330,40 +422,48 @@ export class S3PostProcessor {
 
             htmlElement.setAttribute(
                 Config.S3_LINK_PLUGIN_DATA_ATTRIBUTE,
-                `${Config.S3_SIGNED_LINK_PREFIX}/${objectKey}`
+                rawKey
             );
         });
     }
 
-    private async initNewS3Item(objectKey: string): Promise<string> {
-        const versionId = await this.client.getLatestObjectVersion(objectKey);
+    private async initNewS3Item(
+        client: StorageClient,
+        sourceId: string,
+        objectKey: string
+    ): Promise<string> {
+        const versionToken = await client.getVersionToken(objectKey);
 
-        if (versionId) {
-            this.cache.writeItemToCache(objectKey, versionId);
+        if (versionToken) {
+            this.cache.writeItemToCache(sourceId, objectKey, versionToken);
 
-            return versionId;
+            return versionToken;
         }
 
         throw new Error(
-            `Failed to retrieve versionId for objectKey ${objectKey}`
+            `Failed to retrieve versionToken for objectKey ${objectKey}`
         );
     }
 
     /**
-     * Load the file from S3 and save it to the cache folder
+     * Load the file from the remote storage and save it to the cache folder
      *
+     * @param client the storage client
+     * @param sourceId the storage source id
      * @param objectKey
-     * @param versionId
+     * @param versionToken
      * @returns
      */
     private async loadS3Item(
+        client: StorageClient,
+        sourceId: string,
         objectKey: string,
-        versionId: string
+        versionToken: string
     ): Promise<TFile | S3Link> {
-        const stream = await this.client.getObject(objectKey, versionId);
+        const stream = await client.getObject(objectKey, versionToken);
         const savedFile = await this.cache.saveFileToCacheFolder(
             objectKey,
-            versionId,
+            versionToken,
             stream
         );
 
@@ -371,56 +471,68 @@ export class S3PostProcessor {
             // if the instance is a tfile it means that the file was already cached and was loaded from the cache
             return savedFile as TFile;
         } else {
-            // if the instance is a s3link it means that the file was not cached and was loaded from s3
-            return new S3Link(objectKey, Date.now(), versionId);
+            // if the instance is a s3link it means that the file was not cached and was loaded from remote storage
+            return new S3Link(objectKey, Date.now(), versionToken, sourceId);
         }
     }
 
     /**
-     * Get a signed URL from S3 for the given objectKey and write it to the cache
+     * Get a signed URL from the remote storage for the given objectKey and write it to the cache
      *
+     * @param client the storage client
+     * @param sourceId the storage source id
      * @param objectKey
      *
      * @returns
      */
-    private async getS3SignedUrl(objectKey: string): Promise<string | null> {
-        const versionId = await this.client.getLatestObjectVersion(objectKey);
+    private async getS3SignedUrl(
+        client: StorageClient,
+        sourceId: string,
+        objectKey: string
+    ): Promise<string | null> {
+        const versionToken = await client.getVersionToken(objectKey);
 
-        if (versionId == null) {
+        if (versionToken == null) {
             console.debug(
-                `${this.moduleName} - Error retrieving versionId for objectKey ${objectKey}`
+                `${this.moduleName} - Error retrieving versionToken for objectKey ${objectKey}`
             );
             return null;
         }
-        const signedUrl = await this.client.getSignedUrlForObject(objectKey);
-        this.cache.writeSignedUrlToLocalStorage(objectKey, signedUrl);
+        const signedUrl = await client.getSignedUrl(objectKey);
+        this.cache.writeSignedUrlToLocalStorage(
+            sourceId,
+            objectKey,
+            signedUrl
+        );
 
         return signedUrl;
     }
 
     /**
-     * Retrieves the newest versionId for the given objectKey from S3
-     * If the versionId is the same as the one in the cache, the versionId is returned
+     * Retrieves the newest versionToken for the given objectKey from the remote storage.
+     * If the versionToken is the same as the one in the cache, the cached token is returned.
      *
+     * @param client the storage client
      * @param objectKey
      * @param s3Link
      *
      * @returns
      */
-    private async getNewestVersionId(
+    private async getNewestVersionToken(
+        client: StorageClient,
         objectKey: string,
         s3Link: S3Link
     ): Promise<string | null> {
-        const versionId = await this.client.getLatestObjectVersion(objectKey);
+        const versionToken = await client.getVersionToken(objectKey);
 
-        if (versionId && versionId == s3Link.versionId) {
+        if (versionToken && versionToken === s3Link.versionToken) {
             console.debug(
-                `${this.moduleName} - Item ${objectKey} is still the latest version ${versionId}`
+                `${this.moduleName} - Item ${objectKey} is still the latest version ${versionToken}`
             );
 
-            return s3Link.versionId;
+            return s3Link.versionToken;
         } else {
-            return versionId ?? null;
+            return versionToken ?? null;
         }
     }
 }
