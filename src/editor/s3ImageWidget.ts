@@ -5,6 +5,55 @@ const MIN_WIDTH = 50;
 const MIN_HEIGHT = 50;
 const DEFAULT_MAX_HEIGHT = 400;
 
+const ZOOM_ICON_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>';
+const EDIT_ICON_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>';
+
+/**
+ * Creates a small icon button used for the hover actions (zoom / edit).
+ * The mousedown is blocked so clicking the button never moves the cursor into
+ * the link (which would make the image disappear before the action runs).
+ */
+function createActionButton(
+    svg: string,
+    title: string,
+    onClick: () => void
+): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    button.style.cssText = [
+        "width:22px",
+        "height:22px",
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "border:none",
+        "border-radius:4px",
+        "padding:0",
+        "background:rgba(0,0,0,0.55)",
+        "color:#fff",
+        "cursor:pointer",
+        "box-shadow:0 1px 3px rgba(0,0,0,0.4)",
+    ].join(";");
+    button.innerHTML = svg;
+
+    button.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    });
+
+    button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+    });
+
+    return button;
+}
+
 /**
  * Callbacks the editor plugin provides to a widget: gives the widget its
  * current document range and receives the final size when a drag-resize ends.
@@ -24,16 +73,24 @@ export interface S3ImageWidgetController {
  * not registered in the Electron renderer, so the browser (or the plugin's
  * placeholder guard) would replace/reject it.
  *
- * Interactions:
+ * Interactions (mirroring native Obsidian):
  * - Single-clicking the image keeps it visible (the cursor is not moved, so
  *   the image never disappears just by clicking it).
- * - Double-clicking places the cursor back on the link so the raw markdown
- *   becomes editable.
- * - Hovering shows a resize handle at the bottom-right corner; dragging it
- *   resizes the image and persists the new size back into the link
+ * - Hovering shows action buttons at the top-right corner:
+ *   - Zoom: opens a full-size overlay preview of the image.
+ *   - Edit: moves the cursor into the link so the raw markdown becomes
+ *     editable (the image is replaced by the markdown source).
+ * - Hovering also shows a resize handle at the bottom-right corner; dragging
+ *   it resizes the image and persists the new size back into the link
  *   (`![[s3:...|WxH]]` / `![alt|WxH](s3:...)`).
  */
 export default class S3ImageWidget extends WidgetType {
+    /**
+     * The resolved resource URL, stored once the async resolver returns so the
+     * zoom overlay can show the real image even before it finished painting.
+     */
+    private resolvedUrl = "";
+
     constructor(
         private readonly rawKey: string,
         private readonly resolver: (rawKey: string) => Promise<string>,
@@ -86,21 +143,10 @@ export default class S3ImageWidget extends WidgetType {
         // A single click must keep the image visible: blocking the default
         // mousedown placement stops CodeMirror from moving the cursor into the
         // link, which would remove the widget decoration and make the image
-        // disappear. Double-clicking reveals the raw markdown for editing.
+        // disappear. Editing is triggered explicitly via the edit button.
         image.addEventListener("mousedown", (event) => {
             event.preventDefault();
             event.stopPropagation();
-        });
-
-        image.addEventListener("dblclick", (event) => {
-            const pos = view.posAtCoords({
-                x: event.clientX,
-                y: event.clientY,
-            });
-
-            if (pos !== null) {
-                view.dispatch({ selection: { anchor: pos, head: pos } });
-            }
         });
 
         // --- drag-to-resize handle (native Obsidian style) -----------------
@@ -183,14 +229,44 @@ export default class S3ImageWidget extends WidgetType {
             dragging = false;
         });
 
+        // --- hover action buttons (top-right, native Obsidian style) ------
+        const actions = document.createElement("div");
+        actions.className = "s3-link-plugin-editor-image-actions";
+        actions.style.cssText = [
+            "position:absolute",
+            "top:4px",
+            "right:4px",
+            "display:none",
+            "gap:4px",
+            "z-index:2",
+        ].join(";");
+
+        const zoomBtn = createActionButton(ZOOM_ICON_SVG, "放大", () => {
+            this.showZoom(this.resolvedUrl || image.src);
+        });
+        const editBtn = createActionButton(EDIT_ICON_SVG, "编辑", () => {
+            const range = this.controller.getRange();
+
+            if (range) {
+                view.dispatch({
+                    selection: { anchor: range.from, head: range.from },
+                });
+            }
+        });
+        actions.appendChild(zoomBtn);
+        actions.appendChild(editBtn);
+
         container.appendChild(image);
+        container.appendChild(actions);
         container.appendChild(handle);
 
         container.addEventListener("mouseenter", () => {
+            actions.style.display = "flex";
             handle.style.display = "block";
         });
         container.addEventListener("mouseleave", () => {
             if (!dragging) {
+                actions.style.display = "none";
                 handle.style.display = "none";
             }
         });
@@ -199,8 +275,12 @@ export default class S3ImageWidget extends WidgetType {
             .then((url) => {
                 // The widget may already be detached if the user edited the
                 // document while the image was resolving.
-                if (url && image.isConnected) {
-                    image.src = url;
+                if (url) {
+                    this.resolvedUrl = url;
+
+                    if (image.isConnected) {
+                        image.src = url;
+                    }
                 }
             })
             .catch(() => {
@@ -208,5 +288,49 @@ export default class S3ImageWidget extends WidgetType {
             });
 
         return container;
+    }
+
+    /**
+     * Opens a full-size overlay preview of the image. Clicking anywhere on the
+     * overlay (or pressing Escape) closes it.
+     *
+     * @param src the image URL to display
+     */
+    private showZoom(src: string) {
+        const overlay = document.createElement("div");
+        overlay.className = "s3-link-plugin-editor-zoom-overlay";
+        overlay.style.cssText = [
+            "position:fixed",
+            "inset:0",
+            "z-index:1000",
+            "background:rgba(0,0,0,0.65)",
+            "display:flex",
+            "align-items:center",
+            "justify-content:center",
+            "cursor:zoom-out",
+        ].join(";");
+
+        const zoomImg = document.createElement("img");
+        zoomImg.style.cssText = [
+            "max-width:90vw",
+            "max-height:90vh",
+            "object-fit:contain",
+            "border-radius:4px",
+            "box-shadow:0 4px 32px rgba(0,0,0,0.5)",
+        ].join(";");
+        zoomImg.src = src;
+        overlay.appendChild(zoomImg);
+
+        const close = () => overlay.remove();
+        overlay.addEventListener("click", close);
+        overlay.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+                close();
+            }
+        });
+
+        document.body.appendChild(overlay);
+        overlay.tabIndex = -1;
+        overlay.focus();
     }
 }

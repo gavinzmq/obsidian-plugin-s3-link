@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.3.2（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.2`
+- 打标签 `v1.3.2` 并发布：编辑模式图片悬停显示「放大 / 编辑」按钮（Obsidian 原生交互）随本版本发布
+
+## 2026-09-01 — 图片悬停「放大 / 编辑」按钮（v1.3.2）
+
+- 需求：对齐 Obsidian 原生——鼠标悬停图片右上角出现「放大」和「编辑」按钮；点「编辑」图片变为可编辑 markdown，点「放大」大图预览
+- 实现（`src/editor/s3ImageWidget.ts`）：
+  - 悬停时右上角显示两个 action 按钮（`createActionButton`，内联 SVG 图标、深色半透明圆角）：Zoom → `showZoom()` 全屏 overlay 大图（点击/Esc 关闭，用 `resolvedUrl` 真实 URL）；Edit → `controller.getRange()` + `view.dispatch({selection})` 光标回链接进入可编辑
+  - 移除 dblclick 消失行为；单击图片仍保留（`mousedown` preventDefault + stopPropagation）
+  - resize 拖拽手柄保持右下角不变
+- 验证：tsc 通过；jest 13 套件 / 104 用例通过
+
 ## 2026-09-01 — 版本号 1.3.1（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.1`
