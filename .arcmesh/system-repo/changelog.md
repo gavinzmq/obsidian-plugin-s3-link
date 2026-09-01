@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-01 — release workflow 移除 CI 门禁
+
+- `release.yaml` 删除 "Wait for CI to pass" 步骤与 `actions: read` 权限（commit 1608068）
+- 原因：推送 tag 会并发触发新 CI run（queued），`gh run list` 取到最新 run 一直是 queued/in_progress → 门禁无限等待直到超时，release 卡死
+- 影响：打 tag 即直接构建并创建 GitHub Release，不再自动校验 CI；发布前需人工确认 CI 绿
+- 踩坑记录：tag 触发 workflow 用的是 tag 指向 commit 里的 workflow 快照，改 workflow 后需 `git tag -f vX.Y.Z master && git push origin --force vX.Y.Z` 重指向新提交，否则仍会用旧 workflow
+
 ## 2026-09-01 — 版本号 1.3.0（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.0`
