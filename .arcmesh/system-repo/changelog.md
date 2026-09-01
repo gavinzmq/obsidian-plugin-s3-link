@@ -1,9 +1,15 @@
 # Changelog
 
-## 2026-09-01 — 修复 s3: 链接仍报 net::ERR_UNKNOWN_URL_SCHEME（全局占位符守卫）
+## 2026-09-01 — 版本号 1.1.1（发布）
 
-- 现象：`![](s3:...)` / `![](s3-sign:...)` 在控制台仍出现 `GET s3:... net::ERR_UNKNOWN_URL_SCHEME`；后处理器的同步占位符替换未覆盖 Obsidian（或 live-preview 等）在 post-processor 之外再次设置 `src` 的场景
-- 修复：新增 `src/placeholderGuard.ts`（全局 MutationObserver 守卫）：任何元素 `src` 被设为 `s3:` / `s3-sign:` 时立即替换为占位符（img）或移除 `src`（video）；observer 回调早于浏览器加载，阻止 ERR；`S3PostProcessor.startPlaceholderGuard()` 于 onload 启动、onunload 停止
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.1.1`
+- 打标签 `v1.1.1` 并发布：全局占位符守卫增强（提前注册 + childList）随本版本发布
+
+## 2026-09-01 — 修复 s3: 链接仍报 net::ERR_UNKNOWN_URL_SCHEME（全局占位符守卫，v1.1.1）
+
+- 现象：`![](s3:...)` / `![](s3-sign:...)` 在控制台仍出现 `GET s3:... net::ERR_UNKNOWN_URL_SCHEME`；后处理器的同步占位符替换未覆盖 Obsidian（或 live-preview 等）在 post-processor 之外再次设置 `src` 的场景；且 Obsidian 在插件 onload 完成前就开始渲染视图并创建 `<img src="s3:...">`（堆栈 `Image → initDOM → toDOM`）
+- 修复：新增 `src/placeholderGuard.ts`（全局 MutationObserver 守卫）：任何元素 `src` 被设为 `s3:` / `s3-sign:` 时立即替换为占位符（img）或移除 `src`（video）；observer 回调早于浏览器加载，阻止 ERR
+- 增强：守卫注册提前到 `onload` 最开头（早于 Obsidian 渲染视图）；observer 同时监听 `src` 属性变化与 `childList`（新增元素立即检查）；守卫由 `main.ts` 直接持有，onunload 断开
 - 新增测试 7 例；jest 12 套件 88 用例通过
 
 ## 2026-09-01 — 版本号 1.1.0（发布）

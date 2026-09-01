@@ -51,10 +51,14 @@ export function neutralizeS3Src(target: HTMLElement): boolean {
 /**
  * Observes the whole document and neutralizes any media `src` that is set to an
  * unregistered `s3:` / `s3-sign:` scheme. Obsidian (or other plugins / the
- * live-preview pipeline) can re-apply the raw s3: URL to media elements outside
- * of the post processor's synchronous replacement. Because the MutationObserver
- * callback runs before the browser actually loads the resource, this prevents
- * `net::ERR_UNKNOWN_URL_SCHEME`.
+ * live-preview pipeline) can create media elements or re-apply the raw s3: URL
+ * outside of the post processor's synchronous replacement. Because the
+ * MutationObserver callback runs before the browser actually loads the
+ * resource, this prevents `net::ERR_UNKNOWN_URL_SCHEME`.
+ *
+ * The guard must be started as early as possible (right at plugin `onload`)
+ * because Obsidian may start rendering views before the plugin finished
+ * loading.
  *
  * @returns the observer (call `disconnect()` on unload)
  */
@@ -63,6 +67,16 @@ export function startPlaceholderGuard(): MutationObserver {
         for (const mutation of mutations) {
             if (mutation.type === "attributes") {
                 neutralizeS3Src(mutation.target as HTMLElement);
+            } else if (mutation.type === "childList") {
+                for (const node of mutation.addedNodes) {
+                    if (!(node instanceof HTMLElement)) {
+                        continue;
+                    }
+                    neutralizeS3Src(node);
+                    node.querySelectorAll("img, video").forEach(
+                        neutralizeS3Src
+                    );
+                }
             }
         }
     });
@@ -71,6 +85,7 @@ export function startPlaceholderGuard(): MutationObserver {
         subtree: true,
         attributes: true,
         attributeFilter: ["src"],
+        childList: true,
     });
 
     return observer;

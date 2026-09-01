@@ -13,7 +13,7 @@
 - **日志**：日志级别设置（DEBUG / INFO / WARN / ERROR / NONE，默认 INFO）
 - **自动替换**：可选监听文档变化，将匹配存储源的 `https://` 链接自动替换为 `s3:` 格式
 - **平台**：不再依赖 Node 内置模块，桌面端与移动端（Capacitor WebView）均可运行
-- **当前版本**：1.1.0（含移动端兼容改造与 CI 重构）
+- **当前版本**：1.1.1（含移动端兼容改造、CI 重构与 s3: 占位符守卫）
 
 支持的链接语法：
 
@@ -88,7 +88,7 @@ src/
 > - `VideoResolver` 对命中 `video` 同步 `removeAttribute("src")`，同样由后处理器回填；
 > - `span` / `anchor` 不需要处理——非媒体元素不会自动加载 `src`/`href`。
 >
-> **全局占位符守卫（2026-09-01）**：post-processor 的同步替换仍可能被 Obsidian（live-preview 等）在渲染管线中绕过，导致 `src` 再次变为 `s3:`。新增 `src/placeholderGuard.ts`：全局 MutationObserver 监听 `document.body` 的 `src` 属性变化，一旦出现 `s3:` / `s3-sign:` 前缀立即替换为占位符（img）或移除 `src`（video）。observer 回调运行在浏览器实际加载之前，可阻止 ERR。由 `main.ts` onload 启动、onunload 停止。
+> **全局占位符守卫（2026-09-01）**：post-processor 的同步替换仍可能被 Obsidian（live-preview 等）在渲染管线中绕过，导致 `src` 再次变为 `s3:`。新增 `src/placeholderGuard.ts`：全局 MutationObserver 在插件 onload 最早期注册（早于 Obsidian 渲染视图），监听 `document.body` 的 `src` 属性变化与新增元素（childList），一旦出现 `s3:` / `s3-sign:` 前缀立即替换为占位符（img）或移除 `src`（video）。observer 回调运行在浏览器实际加载之前，可阻止 ERR。由 `main.ts` 持有、onunload 断开。
 
 ### 4.5 缓存：`Cache`（`src/cache.ts`）
 

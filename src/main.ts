@@ -22,6 +22,7 @@ import ReloadActiveLeafCommand from "./command/reloadActiveLeafCommand";
 import ReloadAllLeafsCommand from "./command/reloadAllLeafsCommand";
 import DownloadManager from "./network/downloadManager";
 import { replaceRemoteUrls } from "./autoReplace";
+import { startPlaceholderGuard } from "./placeholderGuard";
 
 export default class S3LinkPlugin extends Plugin {
     private readonly moduleName = "Main";
@@ -30,12 +31,19 @@ export default class S3LinkPlugin extends Plugin {
     pluginState: PluginState;
     statusBar: StatusBar;
     s3PostProcessor: S3PostProcessor;
+    private placeholderGuard: MutationObserver | null = null;
     private isAutoReplaceProcessing = false;
 
     async onload() {
         Logger.info(
             `${this.moduleName}::onload - Loading plugin - ${Config.PLUGIN_NAME}`
         );
+
+        // Register the global s3: src guard as early as possible: Obsidian can
+        // start rendering views (and loading media) before this plugin finishes
+        // loading, so a late registration lets net::ERR_UNKNOWN_URL_SCHEME
+        // slip through for the initial render.
+        this.placeholderGuard = startPlaceholderGuard();
 
         this.statusBar = new StatusBar(this);
         this.setState(PluginState.LOADING);
@@ -54,10 +62,6 @@ export default class S3LinkPlugin extends Plugin {
         this.addPluginCommands(this);
         this.registerVaultListeners();
 
-        // Global guard: swap any src that becomes an unregistered s3:/s3-sign:
-        // scheme back to the placeholder before the browser loads it.
-        this.s3PostProcessor.startPlaceholderGuard();
-
         if (isPluginReadyState(this.settings)) {
             this.setState(PluginState.READY);
         } else {
@@ -68,7 +72,10 @@ export default class S3LinkPlugin extends Plugin {
     async onunload() {
         Logger.info(`${this.moduleName}::onunload - Unloading plugin`);
 
-        this.s3PostProcessor.stopPlaceholderGuard();
+        if (this.placeholderGuard) {
+            this.placeholderGuard.disconnect();
+            this.placeholderGuard = null;
+        }
     }
 
     async loadSettings() {
