@@ -24,8 +24,10 @@ export interface S3ImageWidgetController {
  * not registered in the Electron renderer, so the browser (or the plugin's
  * placeholder guard) would replace/reject it.
  *
- * Interactions (mirroring native Obsidian):
- * - Clicking the image places the cursor back on the link so the raw markdown
+ * Interactions:
+ * - Single-clicking the image keeps it visible (the cursor is not moved, so
+ *   the image never disappears just by clicking it).
+ * - Double-clicking places the cursor back on the link so the raw markdown
  *   becomes editable.
  * - Hovering shows a resize handle at the bottom-right corner; dragging it
  *   resizes the image and persists the new size back into the link
@@ -81,9 +83,16 @@ export default class S3ImageWidget extends WidgetType {
             image.style.height = `${height}px`;
         };
 
-        // Clicking the rendered image places the cursor back on the link so the
-        // raw markdown becomes editable (native Obsidian behavior).
+        // A single click must keep the image visible: blocking the default
+        // mousedown placement stops CodeMirror from moving the cursor into the
+        // link, which would remove the widget decoration and make the image
+        // disappear. Double-clicking reveals the raw markdown for editing.
         image.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        });
+
+        image.addEventListener("dblclick", (event) => {
             const pos = view.posAtCoords({
                 x: event.clientX,
                 y: event.clientY,

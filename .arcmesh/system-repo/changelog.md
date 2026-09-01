@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.3.1（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.1`
+- 打标签 `v1.3.1` 并发布：编辑模式单击图片不再消失（双击才进入编辑）随本版本发布
+
+## 2026-09-01 — 编辑模式单击图片不再消失（v1.3.1）
+
+- 现象：Live Preview 中单击渲染的图片，光标被移入链接范围，`buildDecorations` 移除该图片 widget → 图片消失（此前为 Obsidian 原生“点击可编辑”行为，用户觉得误触即消失很困扰）
+- 修复（`src/editor/s3ImageWidget.ts`）：
+  - `mousedown` 改为 `preventDefault() + stopPropagation()`，阻止 CodeMirror 默认把光标移入链接 → 单击图片保留、光标不动
+  - 新增 `dblclick` 处理：双击才把光标放回链接（`view.posAtCoords` + `view.dispatch({selection})`），图片变为可编辑的原始 markdown
+  - 同步更新 `s3EditorExtension.ts` 注释
+- 验证：tsc 通过；jest 13 套件 / 104 用例通过
+
 ## 2026-09-01 — release workflow 移除 CI 门禁
 
 - `release.yaml` 删除 "Wait for CI to pass" 步骤与 `actions: read` 权限（commit 1608068）

@@ -1,7 +1,7 @@
 {
     "id": "obsidian-plugin-s3-link",
     "name": "S3 Link Plugin",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "minAppVersion": "0.15.0",
     "description": "The S3 Link Plugin allows you to link to files stored on AWS S3, Tencent Cloud COS, Aliyun OSS and other S3-compatible object storage. Files are downloaded and cached locally and the plugin supports authentication via Access Key credentials.",
     "author": "Michael Wiesendanger",

@@ -277,9 +277,10 @@ class S3EditorPlugin {
             const matchEnd = matchStart + match[0].length;
 
             // Keep the raw markdown editable while the cursor is on the link.
-            // The check is boundary-inclusive: clicking a rendered image places
-            // the cursor at the range edge (from/to), which must also reveal
-            // the markdown for editing (native Obsidian behavior).
+            // The check is boundary-inclusive: double-clicking a rendered
+            // image places the cursor at the range edge (from/to), which must
+            // also reveal the markdown for editing. A single click leaves the
+            // cursor alone so the image stays visible.
             if (matchStart <= selTo && matchEnd >= selFrom) {
                 continue;
             }
