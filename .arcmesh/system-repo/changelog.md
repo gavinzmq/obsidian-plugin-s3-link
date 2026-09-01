@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.2.1（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.2.1`
+- 打标签 `v1.2.1` 并发布：编辑视图（Live Preview）修复随本版本发布
+
+## 2026-09-01 — 修复编辑视图（Live Preview）图片渲染与源码模式行为（v1.2.1）
+
+- 现象：1.2.0 的编辑器扩展让源码模式也渲染了图片（源码模式应只显示链接文本），而 Live Preview 仍看不到图片
+- 根因：
+  - 扩展此前对源码模式与 Live Preview 一视同仁，源码模式也被 `Decoration.replace` 换成图片
+  - Live Preview 下 Obsidian 内置图片 widget 会把 `![](s3:...)` 渲染为 `<img src="s3:...">`（`s3:` scheme 不可加载 → 占位符守卫替换为透明图 → 不可见），且优先级高于本插件 decoration，覆盖了插件的渲染
+- 修复（`src/editor/s3EditorExtension.ts`）：
+  - 用 Obsidian 导出的 `editorLivePreviewField`（`StateField<boolean>`）门控：源码模式下返回空 decorations，保持纯链接文本；仅 Live Preview 渲染图片
+  - 用 `Prec.highest(...)`（`@codemirror/state`）包裹 ViewPlugin，使插件的内联 `<img>` widget 以最高优先级覆盖 Obsidian 内置图片 widget
+- 验证：jest 12 套件 / 88 用例通过；tsc / eslint / 生产构建通过；打包产物已确认包含门控与最高优先级逻辑
+
 ## 2026-09-01 — 版本号 1.2.0（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.2.0`

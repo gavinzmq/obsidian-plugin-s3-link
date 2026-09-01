@@ -5,7 +5,8 @@ import {
     ViewPlugin,
     ViewUpdate,
 } from "@codemirror/view";
-import { Extension, RangeSetBuilder } from "@codemirror/state";
+import { Extension, Prec, RangeSetBuilder } from "@codemirror/state";
+import { editorLivePreviewField } from "obsidian";
 import { Logger } from "../logger";
 import S3LinkPlugin from "../main";
 import S3ImageWidget from "./s3ImageWidget";
@@ -83,8 +84,9 @@ class S3EditorLinkResolver {
 /**
  * CodeMirror 6 ViewPlugin that replaces `![](s3:...)` / `![[s3:...]]` embeds
  * in the editor with an inline image widget, so Live Preview shows the images
- * instead of nothing. The raw markdown stays editable: when the cursor is
- * inside a link the widget is not applied.
+ * instead of nothing. It deliberately applies ONLY in Live Preview: in source
+ * mode the raw links must stay as plain text. The raw markdown stays editable:
+ * when the cursor is inside a link the widget is not applied.
  */
 class S3EditorPlugin {
     decorations: DecorationSet;
@@ -112,6 +114,13 @@ class S3EditorPlugin {
 
     private buildDecorations(view: EditorView): DecorationSet {
         const builder = new RangeSetBuilder<Decoration>();
+
+        // Only render images in Live Preview. In source mode the markdown
+        // links must stay visible as plain text (no image widgets).
+        if (!view.state.field(editorLivePreviewField, false)) {
+            return builder.finish();
+        }
+
         const text = view.state.doc.toString();
         const selection = view.state.selection.main;
         const selFrom = Math.min(selection.from, selection.to);
@@ -163,14 +172,19 @@ class S3EditorPlugin {
 export function s3EditorExtension(
     getPostProcessor: () => S3LinkPlugin["s3PostProcessor"]
 ): Extension {
-    return ViewPlugin.fromClass(
-        class extends S3EditorPlugin {
-            constructor(view: EditorView) {
-                super(view, getPostProcessor);
+    // Highest precedence so our widget wins over Obsidian's built-in image
+    // widget (which renders `![](s3:...)` as a broken/invisible image in Live
+    // Preview because the `s3:` scheme is not loadable).
+    return Prec.highest(
+        ViewPlugin.fromClass(
+            class extends S3EditorPlugin {
+                constructor(view: EditorView) {
+                    super(view, getPostProcessor);
+                }
+            },
+            {
+                decorations: (plugin: S3EditorPlugin) => plugin.decorations,
             }
-        },
-        {
-            decorations: (plugin: S3EditorPlugin) => plugin.decorations,
-        }
+        )
     );
 }
