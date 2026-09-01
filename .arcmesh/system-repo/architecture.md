@@ -253,8 +253,8 @@ graph TD
 
 ## 8. 构建、测试与发布
 
-- 开发 `npm run dev`；构建 `npm run build`（tsc + esbuild，`main.js` 约 0.57MB）；测试 Jest（11 套件 / 81 用例，含 platformUtil / sigV4 / ossSigner 签名测试）；lint `node node_modules/eslint/bin/eslint.js .`。
-- 发布：推送 `v*` 标签触发 GitHub Actions 创建 Release（main.js / manifest.json / versions.json）。
+- 本地仅开发 `npm run dev`（监听构建）。Lint（ESLint）、测试（Jest 11 套件 / 81 用例，含 platformUtil / sigV4 / ossSigner 签名测试）与生产构建（tsc + esbuild，`main.js` 约 0.57MB）由 GitHub Actions `.github/workflows/ci.yaml` 在 push / PR 时执行。
+- 发布：推送 `v*` 标签触发 GitHub Actions（`.github/workflows/release.yaml`）创建 Release（main.js / manifest.json / versions.json）。
 
 ## 9. 设计要点与已知局限
 

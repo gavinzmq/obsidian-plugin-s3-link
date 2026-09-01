@@ -96,10 +96,8 @@
 
 ## **构建与持续集成**
 
-- `pnpm build`：生产构建（压缩）。
-- `pnpm dev`：开发模式（监听）。
-- GitHub Actions 在每次 push/PR 时运行：`lint → test → build`。
-- 推送 `v*` 标签时自动触发 Release 发布流程。
+- 本地仅保留开发命令：`pnpm dev`（监听构建）。lint / test / 生产构建全部由 GitHub Actions 执行（`.github/workflows/ci.yaml`，push / PR 时运行 `lint → test → build`）。
+- 推送 `v*` 标签时自动触发 Release 发布流程（`.github/workflows/release.yaml`）。
 
 ## **代码审查要点**
 

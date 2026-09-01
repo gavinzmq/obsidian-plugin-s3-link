@@ -123,10 +123,9 @@ npm install
 ```bash
 npm run dev
 ```
-3. **Linting:**
-```bash
-npx eslint .
-```
+
+> Linting, tests and the production build run automatically in GitHub Actions
+> (`.github/workflows/ci.yaml`) on every push / pull request — no local setup needed.
 
 ### Creating Releases
 

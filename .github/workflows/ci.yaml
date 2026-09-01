@@ -1,0 +1,33 @@
+name: "CI"
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    name: Lint / Test / Build
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Test
+        run: npx jest --ci
+
+      - name: Build (tsc + esbuild)
+        run: |
+          npx tsc -noEmit -skipLibCheck
+          node esbuild.config.mjs production
