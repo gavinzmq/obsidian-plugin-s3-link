@@ -32,6 +32,22 @@ describe("VideoResolver", () => {
             expect(result.objectKeys.size).toBe(1);
             expect(result.signObjectKeys.size).toBe(1);
         });
+
+        it("should clear the s3: src so the renderer never loads an unknown URL scheme", () => {
+            const element = document.createElement("div");
+            const video1 = document.createElement("video");
+            video1.src = `${Config.S3_LINK_PREFIX}${Config.S3_LINK_SPLITTER}objectKey`;
+            const video2 = document.createElement("video");
+            video2.src = `${Config.S3_SIGNED_LINK_PREFIX}${Config.S3_LINK_SPLITTER}objectKey`;
+
+            element.appendChild(video1);
+            element.appendChild(video2);
+
+            resolver.resolveHtmlElement(element);
+
+            expect(video1.hasAttribute("src")).toBe(false);
+            expect(video2.hasAttribute("src")).toBe(false);
+        });
     });
 
     describe("findAllObjectKeysInElement", () => {

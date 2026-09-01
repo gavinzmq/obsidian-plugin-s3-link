@@ -51,6 +51,12 @@ export default class VideoResolver extends Resolver {
                     videoElement.src
                 );
 
+                // Clear the raw s3: src before the renderer can try to load it.
+                // Media elements also fail with net::ERR_UNKNOWN_URL_SCHEME for
+                // unregistered schemes; the real src is set again by the post
+                // processor once the file is available.
+                videoElement.removeAttribute("src");
+
                 this.addObjectKey(parts[this.s3LinkRightPart], videoElement);
             } else if (
                 parts[this.s3LinkLeftPart] == Config.S3_SIGNED_LINK_PREFIX
@@ -59,6 +65,8 @@ export default class VideoResolver extends Resolver {
                     `${this.moduleName} - VideoResolver found sign link:`,
                     videoElement.src
                 );
+
+                videoElement.removeAttribute("src");
 
                 this.addSignObjectKey(
                     parts[this.s3LinkRightPart],

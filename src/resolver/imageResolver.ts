@@ -51,6 +51,13 @@ export default class ImageResolver extends Resolver {
                     imageElement.src
                 );
 
+                // Swap the raw s3: URL for a neutral placeholder right away
+                // (synchronously, before any async work). The s3: scheme is
+                // not a registered protocol, so leaving it in src would make
+                // the renderer attempt to load an unknown URL scheme and log
+                // net::ERR_UNKNOWN_URL_SCHEME on every render.
+                imageElement.src = Config.S3_LINK_PLACEHOLDER;
+
                 this.addObjectKey(parts[this.s3LinkRightPart], imageElement);
             } else if (
                 parts[this.s3LinkLeftPart] == Config.S3_SIGNED_LINK_PREFIX
@@ -59,6 +66,8 @@ export default class ImageResolver extends Resolver {
                     `${this.moduleName} - ImageResolver found sign link:`,
                     imageElement.src
                 );
+
+                imageElement.src = Config.S3_LINK_PLACEHOLDER;
 
                 this.addSignObjectKey(
                     parts[this.s3LinkRightPart],
