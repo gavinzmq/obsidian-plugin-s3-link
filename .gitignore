@@ -1,7 +1,7 @@
 # vscode
 .vscode 
 *.code-workspace
-
+.research_tmp
 # Intellij
 *.iml
 .idea

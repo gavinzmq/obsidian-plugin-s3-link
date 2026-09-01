@@ -12,6 +12,10 @@ const ZOOM_ICON_SVG =
 const EDIT_ICON_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>';
 
+// Small image icon shown before the file name of a plain `[[s3:...]]` link.
+const WIKI_IMAGE_ICON_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
+
 /**
  * Creates a small icon button used for the hover actions (zoom / edit).
  * The mousedown is blocked so clicking the button never moves the cursor into
@@ -71,6 +75,51 @@ function createActionButton(
 export interface S3ImageWidgetController {
     getRange(): { from: number; to: number } | null;
     onResize(width: number, height: number): void;
+}
+
+/**
+ * Opens a full-size overlay preview of an image. Clicking anywhere on the
+ * overlay (or pressing Escape) closes it. Shared by the inline image widget
+ * (hover Zoom action) and the clickable plain wiki-link widget.
+ *
+ * @param src the image URL to display
+ */
+export function showImageZoom(src: string) {
+    const overlay = document.createElement("div");
+    overlay.className = "s3-link-plugin-editor-zoom-overlay";
+    overlay.style.cssText = [
+        "position:fixed",
+        "inset:0",
+        "z-index:1000",
+        "background:rgba(0,0,0,0.65)",
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "cursor:zoom-out",
+    ].join(";");
+
+    const zoomImg = document.createElement("img");
+    zoomImg.style.cssText = [
+        "max-width:90vw",
+        "max-height:90vh",
+        "object-fit:contain",
+        "border-radius:4px",
+        "box-shadow:0 4px 32px rgba(0,0,0,0.5)",
+    ].join(";");
+    zoomImg.src = src;
+    overlay.appendChild(zoomImg);
+
+    const close = () => overlay.remove();
+    overlay.addEventListener("click", close);
+    overlay.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            close();
+        }
+    });
+
+    document.body.appendChild(overlay);
+    overlay.tabIndex = -1;
+    overlay.focus();
 }
 
 /**
@@ -252,7 +301,7 @@ export default class S3ImageWidget extends WidgetType {
         ].join(";");
 
         const zoomBtn = createActionButton(ZOOM_ICON_SVG, "放大", () => {
-            this.showZoom(this.resolvedUrl || image.src);
+            showImageZoom(this.resolvedUrl || image.src);
         });
         const editBtn = createActionButton(EDIT_ICON_SVG, "编辑", () => {
             const range = this.controller.getRange();
@@ -324,48 +373,121 @@ export default class S3ImageWidget extends WidgetType {
 
         return container;
     }
+}
 
-    /**
-     * Opens a full-size overlay preview of the image. Clicking anywhere on the
-     * overlay (or pressing Escape) closes it.
-     *
-     * @param src the image URL to display
-     */
-    private showZoom(src: string) {
-        const overlay = document.createElement("div");
-        overlay.className = "s3-link-plugin-editor-zoom-overlay";
-        overlay.style.cssText = [
-            "position:fixed",
-            "inset:0",
-            "z-index:1000",
-            "background:rgba(0,0,0,0.65)",
-            "display:flex",
+/**
+ * CodeMirror widget that renders a plain wiki link `[[s3:...jpg]]` (no `!`)
+ * as a clickable link. Obsidian treats `[[s3:...]]` as a reference to a vault
+ * file that can never exist, so the editor would show the red "找不到" text.
+ * This widget keeps the link as readable text but makes a click open a
+ * full-size preview of the image instead.
+ *
+ * The raw markdown stays editable: when the cursor is inside the link the
+ * widget is not applied (the same rule as for image embeds).
+ */
+export class S3WikiLinkWidget extends WidgetType {
+    private resolvedUrl = "";
+
+    constructor(
+        private readonly rawKey: string,
+        private readonly resolver: (rawKey: string) => Promise<string>
+    ) {
+        super();
+    }
+
+    eq(other: S3WikiLinkWidget): boolean {
+        return other.rawKey === this.rawKey;
+    }
+
+    toDOM(view: EditorView): HTMLElement {
+        const container = document.createElement("span");
+        container.className = "s3-link-plugin-editor-wiki-link";
+        container.style.cssText = [
+            "display:inline-flex",
+            "align-items:center",
+            "gap:4px",
+            "cursor:pointer",
+            "color:var(--text-accent)",
+            "text-decoration:underline",
+            "text-underline-offset:2px",
+            "vertical-align:middle",
+            "user-select:none",
+        ].join(";");
+        container.title = "点击预览图片";
+
+        const icon = document.createElement("span");
+        icon.style.cssText = [
+            "display:inline-flex",
             "align-items:center",
             "justify-content:center",
-            "cursor:zoom-out",
+            "opacity:0.8",
         ].join(";");
+        icon.innerHTML = WIKI_IMAGE_ICON_SVG;
 
-        const zoomImg = document.createElement("img");
-        zoomImg.style.cssText = [
-            "max-width:90vw",
-            "max-height:90vh",
-            "object-fit:contain",
-            "border-radius:4px",
-            "box-shadow:0 4px 32px rgba(0,0,0,0.5)",
-        ].join(";");
-        zoomImg.src = src;
-        overlay.appendChild(zoomImg);
+        const label = document.createElement("span");
+        label.textContent = this.displayName();
 
-        const close = () => overlay.remove();
-        overlay.addEventListener("click", close);
-        overlay.addEventListener("keydown", (event) => {
-            if (event.key === "Escape") {
-                close();
-            }
+        container.appendChild(icon);
+        container.appendChild(label);
+
+        // Block mousedown so a click never moves the cursor into the link
+        // (which would make Obsidian reveal the raw markdown and remove the
+        // widget before the click can run).
+        container.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        });
+        container.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.openPreview();
         });
 
-        document.body.appendChild(overlay);
-        overlay.tabIndex = -1;
-        overlay.focus();
+        this.resolver(this.rawKey)
+            .then((url) => {
+                if (url) {
+                    this.resolvedUrl = url;
+                }
+            })
+            .catch(() => {
+                // Keep the text; the image cannot be resolved.
+            });
+
+        return container;
+    }
+
+    /**
+     * The link label shown in the editor: the decoded file name (the last
+     * path segment of the object key), falling back to the raw key when the
+     * encoded text cannot be decoded.
+     */
+    private displayName(): string {
+        try {
+            const decoded = decodeURIComponent(this.rawKey);
+            const name = decoded.slice(decoded.lastIndexOf("/") + 1);
+
+            return name || this.rawKey;
+        } catch {
+            return this.rawKey;
+        }
+    }
+
+    /**
+     * Opens the full-size image preview, resolving the resource URL first if
+     * the initial async resolve has not finished yet.
+     */
+    private openPreview() {
+        if (this.resolvedUrl) {
+            showImageZoom(this.resolvedUrl);
+
+            return;
+        }
+
+        this.resolver(this.rawKey).then((url) => {
+            if (url) {
+                this.resolvedUrl = url;
+                showImageZoom(url);
+            }
+        });
     }
 }

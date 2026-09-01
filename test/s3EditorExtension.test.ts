@@ -29,6 +29,18 @@ describe("s3EditorExtension link helpers", () => {
                 extractSchemeKey("![[s3:images/x.jpeg|400]]")
             ).toBe("s3:images/x.jpeg");
         });
+
+        it("extracts plain wiki link keys (no `!`)", () => {
+            expect(extractSchemeKey("[[s3:images/x.jpeg]]")).toBe(
+                "s3:images/x.jpeg"
+            );
+        });
+
+        it("strips an alias from plain wiki links", () => {
+            expect(extractSchemeKey("[[s3:images/x.jpeg|alt]]")).toBe(
+                "s3:images/x.jpeg"
+            );
+        });
     });
 
     describe("extractSize", () => {

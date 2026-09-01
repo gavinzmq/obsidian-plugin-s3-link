@@ -11,6 +11,7 @@ import { Logger } from "../logger";
 import S3LinkPlugin from "../main";
 import S3ImageWidget, {
     S3ImageWidgetController,
+    S3WikiLinkWidget,
 } from "./s3ImageWidget";
 
 /**
@@ -20,6 +21,51 @@ import S3ImageWidget, {
  */
 const S3_IMAGE_LINK_REGEX =
     /!\[[^\]]*\]\(\s*(s3-sign:|s3:)[^\s)]*\s*\)|!\[\[(s3-sign:|s3:)[^\]]*\]\]/g;
+
+/**
+ * Matches plain wiki links (no `!`) whose target uses the plugin's custom
+ * `s3:` / `s3-sign:` scheme, e.g. `[[s3:1787809352422-....jpg]]`. Obsidian
+ * renders these as unresolved "找不到" links because the `s3:` file can never
+ * exist in the vault; we replace them with a clickable link that previews the
+ * image. The negative lookbehind keeps `![[...]]` embeds (handled by
+ * S3_IMAGE_LINK_REGEX) out of this match.
+ */
+const S3_WIKI_LINK_REGEX = /(?<!\!)\[\[(s3-sign:|s3:)[^\]]*\]\]/g;
+
+/**
+ * File extensions that get a clickable image preview when referenced by a
+ * plain `[[s3:...]]` wiki link (non-image targets keep Obsidian's default
+ * unresolved-link rendering).
+ */
+const IMAGE_EXTENSIONS = new Set([
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".svg",
+    ".avif",
+    ".ico",
+    ".tif",
+    ".tiff",
+]);
+
+/**
+ * Whether a scheme-qualified key (`s3:...` / `s3-sign:...`) refers to an
+ * image file, based on its extension.
+ *
+ * @param schemeKey the scheme-qualified object key
+ */
+function isImageKey(schemeKey: string): boolean {
+    const dot = schemeKey.lastIndexOf(".");
+
+    if (dot < 0) {
+        return false;
+    }
+
+    return IMAGE_EXTENSIONS.has(schemeKey.slice(dot).toLowerCase());
+}
 
 /**
  * Extracts the scheme-qualified key from a matched image embed, e.g.
@@ -36,6 +82,8 @@ export function extractSchemeKey(match: string): string {
 
     if (match.startsWith("![[")) {
         inner = match.slice(3, -2);
+    } else if (match.startsWith("[[")) {
+        inner = match.slice(2, -2);
     } else {
         const open = match.indexOf("](");
         inner = match.slice(open + 2, -1);
@@ -203,22 +251,35 @@ class S3EditorLinkResolver {
             return Promise.resolve(cached);
         }
 
-        let pending = this.inflight.get(rawKey);
+        const existing = this.inflight.get(rawKey);
 
-        if (!pending) {
-            pending = this.resolveFn(rawKey)
-                .then((url) => {
-                    if (url) {
-                        this.resolved.set(rawKey, url);
-                    }
+        if (existing) {
+            return existing;
+        }
+
+        // `.finally` is not part of the project's ES7 lib, so the in-flight
+        // map is cleaned up explicitly on both the success and error paths.
+        const pending = this.resolveFn(rawKey)
+            .then((url) => {
+                if (url) {
+                    this.resolved.set(rawKey, url);
+                }
+
+                return url;
+            })
+            .then(
+                (url) => {
+                    this.inflight.delete(rawKey);
 
                     return url;
-                })
-                .finally(() => {
+                },
+                (error) => {
                     this.inflight.delete(rawKey);
-                });
-            this.inflight.set(rawKey, pending);
-        }
+
+                    throw error;
+                }
+            );
+        this.inflight.set(rawKey, pending);
 
         return pending;
     }
@@ -312,6 +373,45 @@ class S3EditorPlugin {
                 (key) => this.resolver.resolve(key),
                 initialSize,
                 controller
+            );
+
+            builder.add(
+                matchStart,
+                matchEnd,
+                Decoration.replace({ widget, block: false })
+            );
+        }
+
+        // Plain wiki links `[[s3:...jpg]]` (no `!`): Obsidian cannot resolve
+        // them to a vault file and would show a red "找不到" text. Replace the
+        // unresolved text with a clickable link whose click opens a full-size
+        // image preview. Only image targets are handled; non-image targets
+        // keep Obsidian's default rendering.
+        S3_WIKI_LINK_REGEX.lastIndex = 0;
+        let wikiMatch: RegExpExecArray | null;
+
+        while ((wikiMatch = S3_WIKI_LINK_REGEX.exec(text)) !== null) {
+            const matchStart = wikiMatch.index;
+            const matchEnd = matchStart + wikiMatch[0].length;
+            const schemeKey = extractSchemeKey(wikiMatch[0]);
+
+            if (!isImageKey(schemeKey)) {
+                continue;
+            }
+
+            // Keep the raw markdown editable while the cursor is on the link
+            // (mirrors the image-embed handling above).
+            if (isCollapsed && selFrom > matchStart && selTo < matchEnd) {
+                continue;
+            }
+
+            Logger.debug(
+                `S3EditorPlugin - Decorating s3 wiki link ${schemeKey}`
+            );
+
+            const widget = new S3WikiLinkWidget(
+                schemeKey,
+                (key) => this.resolver.resolve(key)
             );
 
             builder.add(
