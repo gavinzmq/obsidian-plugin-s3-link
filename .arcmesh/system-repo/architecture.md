@@ -12,9 +12,9 @@
 - **UI**：Provider 下拉；已知服务商端点按 Region 自动组合；测试连接；中/英文界面
 - **日志**：日志级别设置（DEBUG / INFO / WARN / ERROR / NONE，默认 INFO）
 - **自动替换**：可选监听文档变化，将匹配存储源的 `https://` 链接自动替换为 `s3:` 格式
-- **编辑器**：阅读视图（preview）与编辑视图（Live Preview）均可渲染 `s3:` 图片（CodeMirror 6 扩展）
+- **编辑器**：阅读视图（preview）可渲染 `![](...)` 与 `![[...]]` 形式 `s3:` 图片；编辑视图（Live Preview）经 CodeMirror 6 扩展仅渲染 `![](...)` markdown 图片（`![[...]]` / `[[...]]` 编辑模式处理已于 v1.6.1 放弃）
 - **平台**：不再依赖 Node 内置模块，桌面端与移动端（Capacitor WebView）均可运行
-- **当前版本**：1.2.2（含编辑视图 Live Preview 支持与图片拖拽调尺寸、移动端兼容改造与 s3: 占位符守卫）
+- **当前版本**：1.6.2（编辑视图 Live Preview 仅渲染 `![](...)` markdown 图片，含拖拽调尺寸与悬停放大/编辑；`![[...]]` / `[[...]]` wiki 格式编辑模式处理已放弃；移动端兼容改造与 s3: 占位符守卫）
 
 支持的链接语法：
 
@@ -146,11 +146,15 @@ interface StorageClient {
 
 阅读视图靠 `registerMarkdownPostProcessor`，但 Live Preview（编辑器）用 CodeMirror 6 渲染，不会运行 post processor，`s3:` 非标准 scheme 也不被 Obsidian 原生图片扩展识别 → 编辑视图看不到图片。新增 CodeMirror 6 扩展：
 
-- `s3EditorExtension.ts`：`ViewPlugin.fromClass` 构建 `DecorationSet`；正则匹配 `![](s3:...)` / `![[s3:...]]` / `![[s3-sign:...]]`（含 wiki 嵌入），`Decoration.replace({ widget, block:false })` 替换为内联 `<img>`；光标位于链接范围内时跳过替换（保持可编辑）；doc / selection / viewport 变化时重建 decorations。
-- `s3ImageWidget.ts`：widget 的 `<img>` 以 `Config.S3_LINK_PLACEHOLDER` 起步（避免 `s3:` 直接进入 `src`），异步调用 `S3PostProcessor.resolveLinkResourceUrl(schemeKey)` 解析真实资源路径后写回 `src`；`eq` 按 rawKey 复用、避免重复重建。
+- `s3EditorExtension.ts`：`ViewPlugin.fromClass` 构建 `DecorationSet`；正则 `S3_IMAGE_LINK_REGEX` 匹配 `![](s3:...)` / `![](s3-sign:...)`（**仅 markdown 图片形式**），`Decoration.replace({ widget, block:false })` 替换为内联 `<img>`；光标位于链接范围内时跳过替换（保持可编辑）；doc / selection / viewport 变化时重建 decorations。`s3EditorExtension(getPostProcessor)` 闭包内共享 `S3EditorLinkResolver`。
+- `s3ImageWidget.ts`：widget 的 `<img>` 以 `Config.S3_LINK_PLACEHOLDER` 起步（避免 `s3:` 直接进入 `src`），异步调用 `S3PostProcessor.resolveLinkResourceUrl(schemeKey)` 解析真实资源路径后写回 `src`；`eq` 按 rawKey 复用、避免重复重建。悬停右上角「放大 / 编辑」按钮（Obsidian 原生样式，lucide 图标），右下角拖拽调整尺寸（写回 `|WxH`）。
 - `S3EditorLinkResolver`：对同一 key 去重（in-flight 共享 + 结果记忆化），防止选区每次移动都触发重复下载/解析。
 - 注册：`main.ts` 经 `registerEditorExtension(s3EditorExtension(() => this.s3PostProcessor))`，getter 延迟取用后处理器实例，设置重建后自动生效。
 - `@codemirror/view` / `@codemirror/state` 在 esbuild 中保持 external，运行时由 Obsidian 提供。
+
+> **wiki 格式已放弃（v1.6.1 回退）**：曾尝试在编辑模式处理 `![[s3:...]]`（v1.6.0 用 StateField 提供 `Prec.highest` 的 `block:true` `Decoration.replace` 顶掉 Obsidian 的 `.cm-embed-block`）与 `[[s3:...]]`（`S3WikiLinkWidget` 点击预览，v1.5.0）——**实测均失败/被用户弃用**。Obsidian 把 `![[...]]` 渲染成块级 widget（`.cm-embed-block`），行内 decoration 永远覆盖不了；块级 widget 只能由 StateField（非动态）提供且无稳定先例。已删除相关代码，编辑模式只保留 `![](...)`；阅读模式 `![[s3:...]]` 仍由 `SpanResolver` 注入 `<img>` 正常显示（v1.4.0）。
+
+> **编辑按钮「一步出源码」（v1.6.2）**：Obsidian 图片嵌入在光标进入时不会自动切源码（CDP 验证），只有真实指针事件建立 `livePreviewState.mousedown` 才可能，且无公开 API 强制单块展开。修复：`createActionButton` 增加 `allowMousedownBubbling` 参数，**编辑按钮的 `mousedown` 只 `preventDefault()` 不 `stopPropagation()`**（让 Obsidian 收到真实指针），click 里 `view.dispatch({selection})`（去掉 `userEvent`）+ `view.focus()`；zoom 按钮保持拦截（避免图片消失）。
 
 ## 5. 核心流程
 
@@ -215,7 +219,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[CodeMirror ViewPlugin 触发] --> B[正则匹配 ![](s3:...) / ![[s3:...]]]
+    A[CodeMirror ViewPlugin 触发] --> B[正则匹配 ![](s3:...) / ![](s3-sign:...)]
     B --> C{光标在链接内?}
     C -- 是 --> D[跳过, 保留可编辑文本]
     C -- 否 --> E[Decoration.replace 换成内联 img widget 占位符]
@@ -290,7 +294,7 @@ graph TD
 
 ## 8. 构建、测试与发布
 
-- 本地仅开发 `npm run dev`（监听构建）。Lint（ESLint）、测试（Jest 12 套件 / 88 用例，含 platformUtil / sigV4 / ossSigner 签名测试）与生产构建（tsc + esbuild，`main.js` 约 0.57MB）由 GitHub Actions `.github/workflows/ci.yaml` 在 push / PR 时执行。
+- 本地仅开发 `npm run dev`（监听构建）。Lint（ESLint）、测试（Jest 13 套件 / 109 用例，含 platformUtil / sigV4 / ossSigner 签名测试与编辑器 helper）与生产构建（tsc + esbuild，`main.js` 约 0.6MB）由 GitHub Actions `.github/workflows/ci.yaml` 在 push / PR 时执行。
 - 发布：推送 `v*` 标签触发 GitHub Actions（`.github/workflows/release.yaml`）创建 Release（main.js / manifest.json / versions.json）。
 
 ## 9. 设计要点与已知局限

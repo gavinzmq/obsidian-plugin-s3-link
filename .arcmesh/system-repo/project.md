@@ -38,9 +38,9 @@
 
 ## Status
 
-- 版本：1.1.1（`manifest.json`，已发布，含移动端兼容改造、CI 重构与 s3: 占位符守卫）
+- 版本：1.6.2（`manifest.json`，已发布，最新含编辑按钮「一步出源码」修复；编辑模式仅渲染 `![](...)` markdown 图片，`![[...]]` / `[[...]]` wiki 编辑模式处理已放弃 v1.6.1）
 - 架构文档：`architecture.md`（2026-09-01 随占位符修复、日志级别与移动端兼容更新）
 - 组件注册：`components/obsidian-plugin-s3-link.md`
-- 设计决策：`decisions/2026-08-27-multi-cloud-storage-support.md`（已实现，含 §7 UI 修订与 COS 浏览器 SDK 调整）、`decisions/2026-09-01-s3-link-placeholder.md`（已实现，`net::ERR_UNKNOWN_URL_SCHEME` 修复）、`decisions/2026-09-01-mobile-support.md`（已实现，待真机验证）
-- 验证：tsc / esbuild（`main.js` 约 0.57MB）/ Jest（11 套件 / 81 用例）/ ESLint 全部通过
+- 设计决策：`decisions/2026-08-27-multi-cloud-storage-support.md`（已实现，含 §7 UI 修订与 COS 浏览器 SDK 调整）、`decisions/2026-09-01-s3-link-placeholder.md`（已实现，`net::ERR_UNKNOWN_URL_SCHEME` 修复）、`decisions/2026-09-01-mobile-support.md`（已实现，待真机验证）、`decisions/2026-09-01-editor-live-preview.md`（已实现，编辑视图 Live Preview 渲染，含 wiki 格式放弃与编辑按钮机制）
+- 验证：tsc / esbuild（`main.js` 约 0.57MB）/ Jest（13 套件 / 109 用例）/ ESLint 全部通过（由 GitHub CI 在 push 时执行）
 - 待办：真实桶端到端联调（S3/COS/OSS）；移动端 iOS/Android 真机验证（见 `decisions/2026-09-01-mobile-support.md`）；已知局限见 `architecture.md` §9

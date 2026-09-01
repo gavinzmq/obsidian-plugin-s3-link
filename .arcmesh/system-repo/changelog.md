@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.6.2（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.6.2`
+- 打标签 `v1.6.2` 并发布：编辑按钮「一步出源码」（mousedown 冒泡触发 Obsidian 原生源码切换）随本版本发布
+
+## 2026-09-01 — 编辑按钮「一步出源码」（v1.6.2）
+
+- 现象：点插件「编辑」后 Obsidian 接管显示占位图 + 原生「编辑这个区块」按钮，需再点多次才出现链接；图片/占位图叠加混乱
+- 根因（子代理研究）：Obsidian 图片嵌入 `![](...)` 在光标进入时**不会**自动切源码（Britz Lesson 12，CDP 验证）；只有真实指针事件建立 `livePreviewState.mousedown` 才可能切，且无公开 API/命令强制单块展开源码（"编辑这个区块"是唯一原生入口）
+- 修复（`src/editor/s3ImageWidget.ts`）：`createActionButton` 增加 `allowMousedownBubbling` 参数，**编辑按钮的 `mousedown` 只 `preventDefault()` 不 `stopPropagation()`**（让 Obsidian 收到真实指针），click 里 `view.dispatch({selection})`（去掉 `userEvent`）+ `view.focus()`；zoom 按钮保持拦截
+- 待实测：若仍无效，备选 = 模拟点击 `.cm-image-reveal-tooltip .edit-block-button`（DOM hack）或 Britz 方案 C（不 replace + CSS 隐藏原生图 + widget 叠加）
+
+## 2026-09-01 — 版本号 1.6.1（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.6.1`
+- 打标签 `v1.6.1` 并发布：回退——不再处理编辑模式 `![[s3:...]]` / `[[s3:...]]`，仅保留 `![](...)` 随本版本发布
+
+## 2026-09-01 — 放弃 wiki 格式编辑模式处理（v1.6.1，回退）
+
+- 用户要求：不再处理 `![[...]]` 与 `[[...]]` 格式（v1.6.0 的 StateField 块级 widget 方案实测仍显示「找不到」）
+- 删除：`S3_EMBED_REGEX`、`S3_WIKI_LINK_REGEX`、`IMAGE_EXTENSIONS`/`isImageKey`、`buildEmbedDecorations`/StateField、`S3WikiLinkWidget`/`WIKI_IMAGE_ICON_SVG`（净删 335 行）
+- `s3EditorExtension()` 恢复单一 ViewPlugin + 闭包内共享 resolver；保留 `extractSchemeKey`/`extractSize`/`setLinkSize` 的 wiki 分支（死代码但无害）与 `showImageZoom`
+- 结论：Obsidian 的 `![[...]]` embed 在 Live Preview 无法用插件 decoration 稳定覆盖（block widget 独立层），除非改写源文本为 `![](...)`
+
+## 2026-09-01 — 版本号 1.6.0（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.6.0`
+- 打标签 `v1.6.0` 并发布：编辑模式 `![[s3:...]]` 用 StateField 块级 widget 渲染图片随本版本发布（**实测失败**）
+
+## 2026-09-01 — 编辑模式 ![[s3:...]] 块级 widget 方案（v1.6.0，实测失败）
+
+- 现象：`![[s3:...jpg]]` 在编辑模式（Live Preview）显示「找不到」（v1.4.0 仅修复阅读模式）
+- 根因（研究）：Obsidian 把 `![[...]]` 渲染成块级 widget（`.cm-embed-block`，`block:true`），行内 `Decoration.replace`（即使 `Prec.highest`）永远覆盖不了；CM6 又禁止 ViewPlugin 动态 decorations 含 block widget（`RangeError: Block decorations may not be specified via plugins`）
+- 修复尝试：StateField 提供 `Prec.highest` 的 `Decoration.replace({widget, block:true})` 顶掉 `.cm-embed-block`
+- 结果：**实测仍显示「找不到」**，v1.6.1 回退删除
+
 ## 2026-09-01 — 版本号 1.4.0（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.4.0`

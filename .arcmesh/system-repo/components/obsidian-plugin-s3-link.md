@@ -16,7 +16,7 @@ Obsidian 插件（桌面端 + 移动端，移动端兼容已实现、待真机�
 - 入口：`S3LinkPlugin`（`src/main.ts`，含设置迁移、语言设置、日志级别应用、vault 监听/自动替换、编辑器扩展注册）
 - 自动替换：`src/autoReplace.ts`（`https://` → `s3:` 链接，围栏感知）
 - 编排核心：`S3PostProcessor`（`src/s3PostProcessor.ts`，多源解析；`resolveLinkResourceUrl` 供编辑器复用缓存/下载）
-- 编辑器（Live Preview）：`src/editor/`（CodeMirror 6 扩展，`s3EditorExtension.ts` + `s3ImageWidget.ts`，渲染 `![](s3:...)` 内联图片）
+- 编辑器（Live Preview）：`src/editor/`（CodeMirror 6 扩展，`s3EditorExtension.ts` + `s3ImageWidget.ts`，仅渲染 `![](s3:...)` 内联图片；`![[...]]` / `[[...]]` wiki 编辑模式处理已放弃 v1.6.1）
 - 缓存：`Cache`（`src/cache.ts`，versionToken + sha1 文件名 + sourceId 键；Vault 二进制写盘）
 - 网络：`StorageClient` 接口（含 `testConnection`）+ 3 适配器 + `StorageClientFactory` + `sigV4` / `ossSigner`（`src/network/`）
 - 平台工具：`src/platformUtil.ts`（Web Crypto 哈希/HMAC、Base64、路径、字节流收集）
@@ -58,9 +58,16 @@ Obsidian 插件（桌面端 + 移动端，移动端兼容已实现、待真机�
 
 - 现象：阅读/预览视图正常显示 `s3:` 图片，但编辑视图（Live Preview）什么都没有、源码模式只有链接文本。
 - 根因：`registerMarkdownPostProcessor` 只在预览模式触发；Live Preview 用 CodeMirror 6 渲染，不会运行 post processor，`s3:` 非标准 scheme 也不被 Obsidian 原生图片扩展识别。
-- 修复：新增 `src/editor/` —— CodeMirror 6 `ViewPlugin`（`s3EditorExtension.ts`）用正则匹配 `![](s3:...)` / `![[s3:...]]` / `![[s3-sign:...]]`，用 `Decoration.replace` 替换为内联 `<img>` widget（`s3ImageWidget.ts`）；光标在链接内时不替换（保持可编辑）。widget 以占位符起步，异步经 `S3PostProcessor.resolveLinkResourceUrl` 解析真实资源路径（缓存命中直读，未命中按需下载；解析器去重，避免每次选区变化重复下载）。**只作用于 Live Preview**（`editorLivePreviewField` 门控，源码模式保持纯链接文本），且用 `Prec.highest` 包裹以覆盖 Obsidian 内置图片 widget。
+- 修复：新增 `src/editor/` —— CodeMirror 6 `ViewPlugin`（`s3EditorExtension.ts`）用正则 `S3_IMAGE_LINK_REGEX` 匹配 `![](s3:...)` / `![](s3-sign:...)`（仅 markdown 图片形式），用 `Decoration.replace` 替换为内联 `<img>` widget（`s3ImageWidget.ts`）；光标在链接内时不替换（保持可编辑）。widget 以占位符起步，异步经 `S3PostProcessor.resolveLinkResourceUrl` 解析真实资源路径（缓存命中直读，未命中按需下载；解析器去重，避免每次选区变化重复下载）。**只作用于 Live Preview**（`editorLivePreviewField` 门控，源码模式保持纯链接文本），且用 `Prec.highest` 包裹以覆盖 Obsidian 内置图片 widget。
 - 拖拽调尺寸（v1.2.2）：右下角 resize 手柄拖拽调整宽高，松手写回链接 `|WxH`（替换旧尺寸、保留 `|alt`）；渲染时读回尺寸。
 - `@codemirror/view` / `@codemirror/state` 保持 esbuild external，运行时由 Obsidian 提供；jest 12 套件 / 88 用例通过。
+
+### 2026-09-01 — 编辑模式 wiki 格式放弃与编辑按钮修复（v1.6.0–v1.6.2）
+
+- v1.6.0：尝试用 StateField 提供 `Prec.highest` 的 `block:true` `Decoration.replace` 渲染 `![[s3:...]]`（顶掉 Obsidian `.cm-embed-block`）——**实测失败**。
+- v1.6.1（回退）：按用户要求放弃编辑模式对 `![[...]]` / `[[...]]` 的处理，删除 `S3WikiLinkWidget`、`S3_EMBED_REGEX`、`S3_WIKI_LINK_REGEX`、`IMAGE_EXTENSIONS`/`isImageKey`、StateField block 方案（净删 335 行）；编辑模式仅保留 `![](...)`。
+- v1.6.2：编辑按钮「一步出源码」——`createActionButton` 增加 `allowMousedownBubbling`，编辑按钮 `mousedown` 只 `preventDefault()` 不 `stopPropagation()`（让 Obsidian 收到真实指针建立编辑态），click 用 `view.dispatch({selection})` + `view.focus()`（去掉 `userEvent`）。
+- 关键机制认知：Obsidian 图片嵌入在光标进入时不自动切源码；`![[...]]` 是块级 widget（`.cm-embed-block`），插件 decoration 无法稳定覆盖。
 
 ## 相关文档
 
