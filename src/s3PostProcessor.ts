@@ -611,4 +611,124 @@ export class S3PostProcessor {
             return versionToken ?? null;
         }
     }
+
+    /**
+     * Resolves a single S3 link (as written in the markdown, e.g.
+     * `s3:images/x.jpeg` or `s3-sign:bucket/foo.png`) to a URL that can be
+     * loaded in the UI. Used by the editor (live preview) extension to render
+     * s3: images inline. The item is taken from the cache when available and
+     * downloaded on demand otherwise. Signed links (`s3-sign:`) are handled by
+     * the post processor's signed-url cache.
+     *
+     * @param rawKey the scheme-qualified key as written in the link
+     *
+     * @returns a loadable resource URL, or "" when the item cannot be resolved
+     */
+    public async resolveLinkResourceUrl(rawKey: string): Promise<string> {
+        const isSigned = rawKey.startsWith(
+            `${Config.S3_SIGNED_LINK_PREFIX}${Config.S3_LINK_SPLITTER}`
+        );
+        const bareKey = rawKey.replace(
+            new RegExp(
+                `^(${Config.S3_SIGNED_LINK_PREFIX}|${Config.S3_LINK_PREFIX})${Config.S3_LINK_SPLITTER}`
+            ),
+            ""
+        );
+        const { sourceId, objectKey } = resolveSourceKey(
+            this.pluginSettings,
+            bareKey
+        );
+        const client = this.clients.get(sourceId);
+
+        if (!client) {
+            Logger.warn(
+                `${this.moduleName} - No client for source ${sourceId}, cannot resolve ${rawKey} in the editor`
+            );
+
+            return "";
+        }
+
+        // Signed links resolve to a signed URL (cached or freshly generated).
+        if (isSigned) {
+            const cachedSignLink = this.cache.findSignedUrlInCache(
+                sourceId,
+                objectKey
+            );
+
+            if (cachedSignLink != null) {
+                return cachedSignLink.signedUrl;
+            }
+
+            try {
+                const signedUrl = await this.getS3SignedUrl(
+                    client,
+                    sourceId,
+                    objectKey
+                );
+
+                return signedUrl ?? "";
+            } catch (error) {
+                Logger.error(
+                    `${this.moduleName} - Failed to resolve signed URL for ${rawKey} in the editor`,
+                    error
+                );
+
+                return "";
+            }
+        }
+
+        try {
+            const cachedS3Link = this.cache.findItemInCache(
+                sourceId,
+                objectKey
+            );
+
+            if (
+                cachedS3Link != null &&
+                (await this.cache.isFileInCacheFolder(cachedS3Link))
+            ) {
+                const resourcePath = await this.getResourcePath(
+                    cachedS3Link,
+                    sourceId,
+                    objectKey
+                );
+
+                if (resourcePath) {
+                    return resourcePath;
+                }
+            }
+
+            if (cachedS3Link != null) {
+                Logger.warn(
+                    `${this.moduleName} - Cached file for ${objectKey} is missing in the editor, re-downloading`
+                );
+                await this.cache.removeItemFromCache(sourceId, objectKey);
+            }
+
+            // Not cached (or cached file gone): download it and only mark it as
+            // cached once the file was saved successfully.
+            const versionToken = await this.initNewS3Item(client, objectKey);
+            const loadedFile = await this.loadS3Item(
+                client,
+                sourceId,
+                objectKey,
+                versionToken
+            );
+
+            this.cache.writeItemToCache(sourceId, objectKey, versionToken);
+
+            return await this.getResourcePath(
+                loadedFile,
+                sourceId,
+                objectKey
+            );
+        } catch (error) {
+            Logger.error(
+                `${this.moduleName} - Failed to resolve ${rawKey} in the editor`,
+                error
+            );
+
+            return "";
+        }
+    }
 }

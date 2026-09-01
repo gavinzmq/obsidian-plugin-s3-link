@@ -1,7 +1,7 @@
 # obsidian-plugin-s3-link 架构文档
 
 > 最后更新：2026-09-01
-> 本文档基于对代码库的静态扫描自动生成，并随多对象存储支持、UI 增强、自动替换、COS 浏览器 SDK 调整、日志级别设置、s3: 链接占位符修复与移动端兼容改造同步更新。
+> 本文档基于对代码库的静态扫描自动生成，并随多对象存储支持、UI 增强、自动替换、COS 浏览器 SDK 调整、日志级别设置、s3: 链接占位符修复、移动端兼容改造与编辑器（Live Preview）支持同步更新。
 
 ## 1. 项目概览
 
@@ -12,8 +12,9 @@
 - **UI**：Provider 下拉；已知服务商端点按 Region 自动组合；测试连接；中/英文界面
 - **日志**：日志级别设置（DEBUG / INFO / WARN / ERROR / NONE，默认 INFO）
 - **自动替换**：可选监听文档变化，将匹配存储源的 `https://` 链接自动替换为 `s3:` 格式
+- **编辑器**：阅读视图（preview）与编辑视图（Live Preview）均可渲染 `s3:` 图片（CodeMirror 6 扩展）
 - **平台**：不再依赖 Node 内置模块，桌面端与移动端（Capacitor WebView）均可运行
-- **当前版本**：1.1.1（含移动端兼容改造、CI 重构与 s3: 占位符守卫）
+- **当前版本**：1.2.0（含编辑视图 Live Preview 支持、移动端兼容改造与 s3: 占位符守卫）
 
 支持的链接语法：
 
@@ -34,6 +35,7 @@
 - **包管理器**：pnpm
 - **关键依赖**：
   - Obsidian API：`Plugin`、`PluginSettingTab`、`Notice`、`TFile`、`TAbstractFile`、`FileSystemAdapter`、`Vault`
+  - 编辑器：`@codemirror/view` / `@codemirror/state`（esbuild external，运行时由 Obsidian 提供）
   - 存储 SDK：`cos-js-sdk-v5`（腾讯云 COS，浏览器版）；AWS S3 / S3 兼容与阿里云 OSS 使用原生 `fetch` + 手写签名（Web Crypto），不再依赖第三方 SDK
 - **AI 辅助**：DeepSeek V4（通过 Copilot Chat）+ ArcMesh 知识管理
 
@@ -43,7 +45,7 @@
 
 ```
 src/
-├── main.ts                  # 插件入口（设置迁移、语言、vault 监听/自动替换）
+├── main.ts                  # 插件入口（设置迁移、语言、vault 监听/自动替换、编辑器扩展注册）
 ├── config.ts                # 全局常量（前缀、PROVIDERS、占位符、缓存模式版本等）
 ├── i18n.ts                  # 多语言（en/zh），setLanguage / t(key)
 ├── logger.ts                # 统一日志（LogLevel 过滤，默认 INFO）
@@ -51,9 +53,10 @@ src/
 ├── placeholderGuard.ts      # 全局占位符守卫（MutationObserver 拦截 s3: src）
 ├── autoReplace.ts           # https:// → s3: 链接自动替换（正则 + 围栏感知）
 ├── cache.ts                 # 本地缓存（Vault 二进制写盘 + localStorage 元数据）
-├── s3PostProcessor.ts       # Markdown 后处理器（多源编排核心）
+├── s3PostProcessor.ts       # Markdown 后处理器（多源编排核心；含编辑器共享 resolveLinkResourceUrl）
 ├── obsidianHelper.ts        # 资源路径辅助（getCacheFileName sha1、getVaultResourcePath）
 ├── pluginState.ts           # 插件状态枚举
+├── editor/                  # CodeMirror 6 编辑器扩展（Live Preview 内联渲染 s3: 图片）
 ├── command/                 # 4 个命令（清缓存/重载叶子）
 ├── model/                   # S3Link（versionToken/sourceId）、S3SignedLink
 ├── network/                 # StorageClient + 3 适配器 + 工厂 + DownloadManager + sigV4 + ossSigner
@@ -68,8 +71,9 @@ src/
 
 ### 4.1 入口：`S3LinkPlugin`（`src/main.ts`）
 
-- `onload`：状态栏 → 加载设置（含迁移）→ 应用日志级别（`Logger`）→ 设置页 → `Cache` → 清理下载 → 后处理器 → 命令 → `registerVaultListeners` → 状态。
+- `onload`：状态栏 → 加载设置（含迁移）→ 应用日志级别（`Logger`）→ 设置页 → `Cache` → 清理下载 → 后处理器 → 编辑器扩展 → 命令 → `registerVaultListeners` → 状态。
 - `registerVaultListeners`：`vault.on("modify"/"create")` → `onFileModified`（`autoReplaceEnabled` 开启时对 `.md` 重写 `https://` → `s3:`；`isAutoReplaceProcessing` 防递归）。
+- `setupMarkdownPostProcessor`：创建 `S3PostProcessor` 后同时注册 `registerMarkdownPostProcessor`（阅读视图）与 `registerEditorExtension(s3EditorExtension(() => this.s3PostProcessor))`（编辑视图，getter 延迟取用）。
 
 ### 4.2 配置常量：`Config`（`src/config.ts`）
 
@@ -77,7 +81,7 @@ src/
 
 ### 4.3 编排核心：`S3PostProcessor`（`src/s3PostProcessor.ts`）
 
-4 个 Resolver → `resolveSourceKey` → `clients` Map → `StorageClient` 处理；统一 `versionToken`。
+4 个 Resolver → `resolveSourceKey` → `clients` Map → `StorageClient` 处理；统一 `versionToken`。新增 `resolveLinkResourceUrl(rawKey)`：编辑器共享的按需解析入口（缓存命中直读，未命中下载后返回资源路径；`s3-sign:` 走签名缓存或重新生成）。
 
 ### 4.4 解析器族：`Resolver`（`src/resolver/`）
 
@@ -138,6 +142,16 @@ interface StorageClient {
 - 各源主机后缀规则（COS `cos.<region>.myqcloud.com`；OSS `oss-<region>.aliyuncs.com`/`oss.aliyuncs.com`；AWS `s3.*.amazonaws.com`；S3 兼容端点主机名）
 - `replaceRemoteUrls`：正则匹配 `https?://`，虚拟主机/路径寻址，桶名匹配后替换为 `s3:<sourceName/objectKey>`（默认源无前缀）；fenced 代码块不处理。
 
+### 4.13 编辑器扩展（`src/editor/`，2026-09-01）
+
+阅读视图靠 `registerMarkdownPostProcessor`，但 Live Preview（编辑器）用 CodeMirror 6 渲染，不会运行 post processor，`s3:` 非标准 scheme 也不被 Obsidian 原生图片扩展识别 → 编辑视图看不到图片。新增 CodeMirror 6 扩展：
+
+- `s3EditorExtension.ts`：`ViewPlugin.fromClass` 构建 `DecorationSet`；正则匹配 `![](s3:...)` / `![[s3:...]]` / `![[s3-sign:...]]`（含 wiki 嵌入），`Decoration.replace({ widget, block:false })` 替换为内联 `<img>`；光标位于链接范围内时跳过替换（保持可编辑）；doc / selection / viewport 变化时重建 decorations。
+- `s3ImageWidget.ts`：widget 的 `<img>` 以 `Config.S3_LINK_PLACEHOLDER` 起步（避免 `s3:` 直接进入 `src`），异步调用 `S3PostProcessor.resolveLinkResourceUrl(schemeKey)` 解析真实资源路径后写回 `src`；`eq` 按 rawKey 复用、避免重复重建。
+- `S3EditorLinkResolver`：对同一 key 去重（in-flight 共享 + 结果记忆化），防止选区每次移动都触发重复下载/解析。
+- 注册：`main.ts` 经 `registerEditorExtension(s3EditorExtension(() => this.s3PostProcessor))`，getter 延迟取用后处理器实例，设置重建后自动生效。
+- `@codemirror/view` / `@codemirror/state` 在 esbuild 中保持 external，运行时由 Obsidian 提供。
+
 ## 5. 核心流程
 
 ### 5.1 普通链接 `s3:` 处理流程
@@ -197,6 +211,22 @@ flowchart TD
     H --> END
 ```
 
+### 5.4 编辑视图（Live Preview）渲染流程
+
+```mermaid
+flowchart TD
+    A[CodeMirror ViewPlugin 触发] --> B[正则匹配 ![](s3:...) / ![[s3:...]]]
+    B --> C{光标在链接内?}
+    C -- 是 --> D[跳过, 保留可编辑文本]
+    C -- 否 --> E[Decoration.replace 换成内联 img widget 占位符]
+    E --> F[异步 resolveLinkResourceUrl 解析]
+    F --> G{缓存命中且文件存在?}
+    G -- 是 --> H[返回本地资源路径]
+    G -- 否 --> I[按需下载到缓存]
+    I --> H
+    H --> J[写回 img.src]
+```
+
 ## 6. 数据存储汇总
 
 | 存储位置 | 内容 | 键/路径格式 |
@@ -215,6 +245,7 @@ graph TD
     Main[S3LinkPlugin<br>src/main.ts] --> Config
     Main --> Cache
     Main --> S3PP[S3PostProcessor]
+    Main --> EditorExt[editor/s3EditorExtension]
     Main --> Settings[settings/settings]
     Main --> SettingsTab[settingsTab]
     Main --> I18n[i18n]
@@ -222,6 +253,9 @@ graph TD
     Main --> StatusBar
     Main --> Cmds[4 个 Command]
     Main --> DM[DownloadManager]
+
+    EditorExt --> S3PP
+    EditorExt --> Widget[editor/s3ImageWidget]
 
     SettingsTab --> I18n
     SettingsTab --> Factory[StorageClientFactory]
@@ -256,7 +290,7 @@ graph TD
 
 ## 8. 构建、测试与发布
 
-- 本地仅开发 `npm run dev`（监听构建）。Lint（ESLint）、测试（Jest 11 套件 / 81 用例，含 platformUtil / sigV4 / ossSigner 签名测试）与生产构建（tsc + esbuild，`main.js` 约 0.57MB）由 GitHub Actions `.github/workflows/ci.yaml` 在 push / PR 时执行。
+- 本地仅开发 `npm run dev`（监听构建）。Lint（ESLint）、测试（Jest 12 套件 / 88 用例，含 platformUtil / sigV4 / ossSigner 签名测试）与生产构建（tsc + esbuild，`main.js` 约 0.57MB）由 GitHub Actions `.github/workflows/ci.yaml` 在 push / PR 时执行。
 - 发布：推送 `v*` 标签触发 GitHub Actions（`.github/workflows/release.yaml`）创建 Release（main.js / manifest.json / versions.json）。
 
 ## 9. 设计要点与已知局限
@@ -266,7 +300,8 @@ graph TD
 3. **整对象缓冲**：所有适配器下载均为整对象缓冲（移动端 Vault API 无法流式写盘），超大文件内存占用需注意（原桌面端流式写盘已移除）。
 4. **自动替换局限**：`s3:` 格式（`s3://` 不被解析）；fenced 代码块不处理，行内代码/HTML 内 URL 未保护；仅 `.md` 且仅修改时触发；`modify` 写回可能影响正在编辑游标。
 5. **占位符局限（2026-09-01）**：占位符仅覆盖图片/视频元素；`s3:` 作为 `href` 被用户主动点击时仍可能触发未知 scheme 加载。
-6. 其他：`split(":")` 冒号截断；`forEach(async)` 未串行等待；命令层依赖未公开 API（`@ts-ignore`）；i18n 暂仅覆盖设置 UI。
+6. **编辑器扩展局限（2026-09-01）**：仅内联渲染图片 `img`（视频/span/锚点在编辑视图暂不渲染，源码模式仍可见链接文本）；编辑器内的过期缓存不主动做远端 HEAD 校验（沿用本地缓存直读，避免每次选区移动触发网络请求）；正则匹配假定 `s3:` / `s3-sign:` 出现在链接目的地开头。
+7. 其他：`split(":")` 冒号截断；`forEach(async)` 未串行等待；命令层依赖未公开 API（`@ts-ignore`）；i18n 暂仅覆盖设置 UI。
 
 ## 10. 已实现的决策
 
@@ -274,3 +309,4 @@ graph TD
 - **2026-09-01**：s3: 链接占位符修复（`net::ERR_UNKNOWN_URL_SCHEME`，v1.0.10）已实现；日志级别设置（v1.0.9）已落地，详见 `decisions/2026-09-01-s3-link-placeholder.md`。
 - **2026-09-01**：移动端兼容改造已实现（移除 Node 依赖、Vault 二进制缓存、fetch + Web Crypto 签名），待真机验证后发布，详见 `decisions/2026-09-01-mobile-support.md`。
 - **2026-09-01**：s3: 链接全局占位符守卫已实现（`placeholderGuard.ts`，消除残余 `net::ERR_UNKNOWN_URL_SCHEME`）。
+- **2026-09-01**：编辑视图（Live Preview）支持已实现（`editor/` CodeMirror 6 扩展 + `S3PostProcessor.resolveLinkResourceUrl`）。

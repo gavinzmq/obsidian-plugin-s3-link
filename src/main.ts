@@ -23,6 +23,7 @@ import ReloadAllLeafsCommand from "./command/reloadAllLeafsCommand";
 import DownloadManager from "./network/downloadManager";
 import { replaceRemoteUrls } from "./autoReplace";
 import { startPlaceholderGuard } from "./placeholderGuard";
+import { s3EditorExtension } from "./editor/s3EditorExtension";
 
 export default class S3LinkPlugin extends Plugin {
     private readonly moduleName = "Main";
@@ -208,6 +209,14 @@ export default class S3LinkPlugin extends Plugin {
             this.s3PostProcessor.onMarkdownPostProcessor.bind(
                 this.s3PostProcessor
             )
+        );
+
+        // Live Preview (editor mode) renders markdown with CodeMirror 6 and
+        // does NOT run the markdown post processor. Register a CodeMirror
+        // extension that replaces `![](s3:...)` embeds with inline images so
+        // the images are visible while editing, not only in reading view.
+        this.registerEditorExtension(
+            s3EditorExtension(() => this.s3PostProcessor)
         );
     }
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.2.0（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.2.0`
+- 打标签 `v1.2.0` 并发布：编辑视图（Live Preview）内联渲染 s3: 图片随本版本发布
+
+## 2026-09-01 — 编辑视图（Live Preview）支持
+
+- 现象：阅读/预览视图正常显示 `s3:` 图片，但编辑视图（Live Preview）什么都没有、源码模式只有链接文本
+- 根因：`registerMarkdownPostProcessor` 只在预览模式触发；Live Preview 用 CodeMirror 6 渲染，不运行 post processor，且 `s3:` 非标准 scheme 不被 Obsidian 原生图片扩展识别
+- 修复：
+  - 新增 `src/editor/` —— CodeMirror 6 `ViewPlugin`（`s3EditorExtension.ts`）正则匹配 `![](s3:...)` / `![[s3:...]]` / `![[s3-sign:...]]`（含 wiki 嵌入），`Decoration.replace({ widget })` 替换为内联 `<img>` widget（`s3ImageWidget.ts`，占位符起步 + 异步解析）；光标位于链接内时跳过替换，保持原始 markdown 可编辑
+  - `S3PostProcessor` 新增 `resolveLinkResourceUrl(rawKey)`：阅读/编辑共享的按需解析入口（缓存命中直读、未命中按需下载、`s3-sign:` 走签名缓存或重新生成）；`S3EditorLinkResolver` 对同一 key 去重 + 记忆化，避免选区移动触发重复下载
+  - 注册：`main.ts` 经 `registerEditorExtension(s3EditorExtension(() => this.s3PostProcessor))`；`@codemirror/view` / `@codemirror/state` 保持 esbuild external（运行时由 Obsidian 提供）
+- 验证：jest 12 套件 / 88 用例通过；tsc / eslint / 生产构建通过；正则匹配与 key 提取（`![]()` / `![[...]]` / `s3:` / `s3-sign:` / 普通 `https:` 不误命中）手工验证通过
+
 ## 2026-09-01 — 版本号 1.1.1（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.1.1`
