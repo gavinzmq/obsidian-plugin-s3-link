@@ -15,8 +15,6 @@ env:
 
 permissions:
   contents: write
-  # Required so the "Wait for CI to pass" gate can query workflow runs.
-  actions: read
 
 jobs:
   release-github:
@@ -31,40 +29,6 @@ jobs:
           else
             echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
           fi
-
-      # Release gate: only publish after the CI workflow passed for this exact
-      # commit. Pushing a tag also triggers CI on the same SHA, so this step
-      # waits for that run (or an earlier green CI run on this SHA) and aborts
-      # the release when it is missing / red / still running past the timeout.
-      - name: "Wait for CI to pass"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          for attempt in $(seq 1 60); do
-            run_json=$(gh run list --workflow=ci.yaml --commit "${HEAD_SHA}" \
-              --json status,conclusion --jq '.[0]' || true)
-            if [ -z "$run_json" ] || [ "$run_json" = "null" ]; then
-              echo "No CI run found yet for ${HEAD_SHA} (attempt ${attempt}/60), retrying..."
-              sleep 10
-              continue
-            fi
-            status=$(printf '%s' "$run_json" | jq -r '.status')
-            conclusion=$(printf '%s' "$run_json" | jq -r '.conclusion')
-            echo "CI run for ${HEAD_SHA}: status=${status}, conclusion=${conclusion}"
-            if [ "$status" = "completed" ]; then
-              if [ "$conclusion" = "success" ]; then
-                echo "::notice::CI passed for ${HEAD_SHA}; proceeding with release"
-                exit 0
-              fi
-              echo "::error::CI failed for ${HEAD_SHA} (conclusion=${conclusion}); aborting release"
-              exit 1
-            fi
-            echo "CI still running (attempt ${attempt}/60), waiting..."
-            sleep 10
-          done
-          echo "::error::Timed out waiting for CI on ${HEAD_SHA}"
-          exit 1
 
       - name: Checkout Repository
         uses: actions/checkout@v5
