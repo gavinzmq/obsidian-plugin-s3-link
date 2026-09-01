@@ -1,16 +1,18 @@
 # obsidian-plugin-s3-link 架构文档
 
-> 最后更新：2026-08-27
-> 本文档基于对代码库的静态扫描自动生成，并随多对象存储支持、UI 增强、自动替换与 COS 浏览器 SDK 调整同步更新。
+> 最后更新：2026-09-01
+> 本文档基于对代码库的静态扫描自动生成，并随多对象存储支持、UI 增强、自动替换、COS 浏览器 SDK 调整、日志级别设置与 s3: 链接占位符修复同步更新。
 
 ## 1. 项目概览
 
-`obsidian-plugin-s3-link` 是一个 Obsidian 桌面端插件（`isDesktopOnly: true`），用于在笔记中引用对象存储中的文件。插件会把文件下载并缓存到本地 vault 的 `s3_cache` 文件夹，并支持生成预签名 URL。
+`obsidian-plugin-s3-link` 是一个 Obsidian 插件（当前 `isDesktopOnly: true`，仅桌面端；移动端兼容为规划需求，见 `decisions/2026-09-01-mobile-support.md`），用于在笔记中引用对象存储中的文件。插件会把文件下载并缓存到本地 vault 的 `s3_cache` 文件夹，并支持生成预签名 URL。
 
 - **已实现**：AWS S3、腾讯云 COS、阿里云 OSS、任意 S3 兼容端点（MinIO 等）
 - **认证**：设置页文本输入 Access Key / Secret Key（不再读取 `~/.aws/credentials`）
 - **UI**：Provider 下拉；已知服务商端点按 Region 自动组合；测试连接；中/英文界面
+- **日志**：日志级别设置（DEBUG / INFO / WARN / ERROR / NONE，默认 INFO）
 - **自动替换**：可选监听文档变化，将匹配存储源的 `https://` 链接自动替换为 `s3:` 格式
+- **当前版本**：1.0.10
 
 支持的链接语法：
 
@@ -24,10 +26,15 @@
 
 ## 2. 技术栈
 
-- TypeScript 4.7；esbuild（CJS，`src/main.ts` → `main.js`）
-- Jest + ts-jest + jest-environment-jsdom（`test/mock/obsidianMock.ts`）
-- 存储 SDK：`@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`、`cos-js-sdk-v5`（浏览器）、`ali-oss`
-- Obsidian API：`Plugin`、`PluginSettingTab`、`Notice`、`TFile`、`TAbstractFile`、`FileSystemAdapter`、`Vault`
+- **语言**：TypeScript
+- **构建工具**：esbuild（CJS，`src/main.ts` → `main.js`）
+- **测试框架**：Jest + jsdom（`test/mock/obsidianMock.ts`）
+- **CI/CD**：GitHub Actions
+- **包管理器**：pnpm
+- **关键依赖**：
+  - Obsidian API：`Plugin`、`PluginSettingTab`、`Notice`、`TFile`、`TAbstractFile`、`FileSystemAdapter`、`Vault`
+  - 存储 SDK：`@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`、`cos-js-sdk-v5`（浏览器）、`ali-oss`
+- **AI 辅助**：DeepSeek V4（通过 Copilot Chat）+ ArcMesh 知识管理
 
 > Obsidian 插件运行于渲染进程（浏览器环境），COS 使用浏览器 SDK `cos-js-sdk-v5` 而非 Node 版。
 
@@ -36,8 +43,9 @@
 ```
 src/
 ├── main.ts                  # 插件入口（设置迁移、语言、vault 监听/自动替换）
-├── config.ts                # 全局常量（前缀、PROVIDERS、缓存模式版本等）
+├── config.ts                # 全局常量（前缀、PROVIDERS、占位符、缓存模式版本等）
 ├── i18n.ts                  # 多语言（en/zh），setLanguage / t(key)
+├── logger.ts                # 统一日志（LogLevel 过滤，默认 INFO）
 ├── autoReplace.ts           # https:// → s3: 链接自动替换（正则 + 围栏感知）
 ├── cache.ts                 # 本地缓存（文件系统 + localStorage 元数据）
 ├── s3PostProcessor.ts       # Markdown 后处理器（多源编排核心）
@@ -57,12 +65,12 @@ src/
 
 ### 4.1 入口：`S3LinkPlugin`（`src/main.ts`）
 
-- `onload`：状态栏 → 加载设置（含迁移）→ 设置页 → `Cache` → 清理下载 → 后处理器 → 命令 → `registerVaultListeners` → 状态。
+- `onload`：状态栏 → 加载设置（含迁移）→ 应用日志级别（`Logger`）→ 设置页 → `Cache` → 清理下载 → 后处理器 → 命令 → `registerVaultListeners` → 状态。
 - `registerVaultListeners`：`vault.on("modify"/"create")` → `onFileModified`（`autoReplaceEnabled` 开启时对 `.md` 重写 `https://` → `s3:`；`isAutoReplaceProcessing` 防递归）。
 
 ### 4.2 配置常量：`Config`（`src/config.ts`）
 
-`CACHE_FOLDER`、`S3_LINK_PREFIX`(`s3`)、`S3_SIGNED_LINK_PREFIX`(`s3-sign`)、`SOURCE_SPLITTER`(`/`)、TTL 常量、`CACHE_SCHEMA_VERSION`(2)、`PROVIDERS`。
+`CACHE_FOLDER`、`S3_LINK_PREFIX`(`s3`)、`S3_SIGNED_LINK_PREFIX`(`s3-sign`)、`SOURCE_SPLITTER`(`/`)、TTL 常量、`CACHE_SCHEMA_VERSION`(2)、`PROVIDERS`、`S3_LINK_PLACEHOLDER`（透明 GIF data URI，见 §4.4）。
 
 ### 4.3 编排核心：`S3PostProcessor`（`src/s3PostProcessor.ts`）
 
@@ -71,6 +79,11 @@ src/
 ### 4.4 解析器族：`Resolver`（`src/resolver/`）
 
 `img` / `video` / `span` / `a`；`split(":")` 解析（含冒号截断局限）。
+
+> **s3: 占位符修复（2026-09-01，v1.0.10）**：`s3:` 不是 Electron 渲染进程注册的 scheme，Obsidian 渲染器会直接生成 `<img src="s3:...">`，浏览器在后处理器异步下载完成前就尝试加载未知 scheme，控制台报 `net::ERR_UNKNOWN_URL_SCHEME`。修复方式：
+> - `ImageResolver` 命中 `s3:` / `s3-sign:` 的 `img` 时，在任何 `await` 之前**同步**把 `src` 替换为 `Config.S3_LINK_PLACEHOLDER`（透明 GIF data URI），待后处理器取到本地文件或签名 URL 后再写回真实 `src`；
+> - `VideoResolver` 对命中 `video` 同步 `removeAttribute("src")`，同样由后处理器回填；
+> - `span` / `anchor` 不需要处理——非媒体元素不会自动加载 `src`/`href`。
 
 ### 4.5 缓存：`Cache`（`src/cache.ts`）
 
@@ -103,17 +116,17 @@ interface StorageClient {
 
 ### 4.9 设置（`src/settings/`）
 
-- `StorageSource` + `PluginSettings{sources, language, autoReplaceEnabled}`。
+- `StorageSource` + `PluginSettings{sources, language, autoReplaceEnabled, logLevel}`。
 - `getComposedEndpoint` / `isKnownProvider` / `resolveSourceKey` / `isPluginReadyState`。
-- `PluginSettingsTab`：语言下拉、自动替换开关、Provider 下拉、已知服务商端点自动组合、S3 兼容自定义端点、测试连接、添加/删除源。
+- `PluginSettingsTab`：语言下拉、日志级别下拉、自动替换开关、Provider 下拉、已知服务商端点自动组合、S3 兼容自定义端点、测试连接、添加/删除源。
 
 ### 4.10 UI（`src/ui/`）
 
 `sendNotification`（Notice）、`StatusBar`。
 
-### 4.11 辅助与国际化
+### 4.11 日志与辅助
 
-`obsidianHelper.ts`（`getCacheFileName`、`getVaultResourcePath`）、`i18n.ts`。
+`logger.ts`（`Logger` + `LogLevel`：DEBUG / INFO / WARN / ERROR / NONE，默认 INFO；所有插件日志统一经 `Logger` 按级别过滤，设置页「日志级别」下拉控制）、`obsidianHelper.ts`（`getCacheFileName`、`getVaultResourcePath`、`getCacheFileUrl`）、`i18n.ts`。
 
 ### 4.12 自动替换远程链接（`src/autoReplace.ts`）
 
@@ -127,7 +140,8 @@ interface StorageClient {
 ```mermaid
 flowchart TD
     A[Markdown 渲染触发 onMarkdownPostProcessor] --> B[4 个 Resolver 解析 HTML]
-    B --> C[resolveSourceKey 解析 sourceId/objectKey]
+    B --> B2[img/video 同步替换为占位符或清空 src]
+    B2 --> C[resolveSourceKey 解析 sourceId/objectKey]
     C --> D{localStorage 中是否存在缓存?}
     D -- 否 --> E[StorageClient.getVersionToken 获取 versionToken]
     E --> F[Cache.writeItemToCache 写元数据]
@@ -148,7 +162,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[解析出 signObjectKeys + 来源] --> B{localStorage 中是否存在签名链接?}
+    A[解析出 signObjectKeys + 来源] --> B0[img/video 同步替换为占位符或清空 src]
+    B0 --> B{localStorage 中是否存在签名链接?}
     B -- 是 --> C{签名链接是否过期? > 7天}
     C -- 否 --> D[直接使用缓存的 signedUrl]
     B -- 否 --> E[StorageClient.getVersionToken 校验对象存在]
@@ -236,7 +251,7 @@ graph TD
 
 ## 8. 构建、测试与发布
 
-- 开发 `npm run dev`；构建 `npm run build`（tsc + esbuild，`main.js` 约 2.8MB）；测试 Jest（7 套件 / 44 用例）；lint `npx eslint .`。
+- 开发 `npm run dev`；构建 `npm run build`（tsc + esbuild，`main.js` 约 2.8MB）；测试 Jest（8 套件 / 60 用例）；lint `npx eslint .`。
 - 发布：推送 `v*` 标签触发 GitHub Actions 创建 Release（main.js / manifest.json / versions.json）。
 
 ## 9. 设计要点与已知局限
@@ -244,8 +259,10 @@ graph TD
 1. 多源 + 版本令牌；适配器隔离；端点自动组合；崩溃恢复（`CACHE_SCHEMA_VERSION` / `DownloadManager` 清理）。
 2. **COS 浏览器 SDK 调整**：`cos-js-sdk-v5` 整对象缓冲下载（无增量流式），超大文件内存占用需注意；`ali-oss` 仍为 Node 目标 SDK，浏览器环境可用性待真机确认。
 3. **自动替换局限**：`s3:` 格式（`s3://` 不被解析）；fenced 代码块不处理，行内代码/HTML 内 URL 未保护；仅 `.md` 且仅修改时触发；`modify` 写回可能影响正在编辑游标。
-4. 其他：`split(":")` 冒号截断；`forEach(async)` 未串行等待；命令层依赖未公开 API（`@ts-ignore`）；i18n 暂仅覆盖设置 UI。
+4. **占位符局限（2026-09-01）**：占位符仅覆盖图片/视频元素；`s3:` 作为 `href` 被用户主动点击时仍可能触发未知 scheme 加载。
+5. 其他：`split(":")` 冒号截断；`forEach(async)` 未串行等待；命令层依赖未公开 API（`@ts-ignore`）；i18n 暂仅覆盖设置 UI。
 
-## 10. 已实现的决策（2026-08-27）
+## 10. 已实现的决策
 
-多对象存储支持、UI 增强、自动替换与 COS 浏览器 SDK 调整均已实现并落地，本文档已同步更新。
+- **2026-08-27**：多对象存储支持、UI 增强、自动替换与 COS 浏览器 SDK 调整均已实现并落地，本文档已同步更新。
+- **2026-09-01**：s3: 链接占位符修复（`net::ERR_UNKNOWN_URL_SCHEME`，v1.0.10）已实现；日志级别设置（v1.0.9）已落地，详见 `decisions/2026-09-01-s3-link-placeholder.md`。

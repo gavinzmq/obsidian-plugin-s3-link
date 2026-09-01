@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.0.10
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.10`
+- 打标签 `v1.0.10` 并发布（含 s3: 链接 `net::ERR_UNKNOWN_URL_SCHEME` 修复）
+
+## 2026-09-01 — 修复 s3: 链接渲染报 net::ERR_UNKNOWN_URL_SCHEME
+
+- 现象：与 obsidian-plugin-auto-upload 共同使用时，`![](s3:images/x.jpeg)` 渲染报 `GET s3:... net::ERR_UNKNOWN_URL_SCHEME`（`s3:` 非 Electron 注册 scheme，后处理器异步下载前浏览器已尝试加载）
+- 修复：
+  - `config.ts` 新增 `S3_LINK_PLACEHOLDER`（透明 GIF data URI）
+  - `ImageResolver` 命中 `s3:` / `s3-sign:` 的 img 时，在任何 await 之前同步将 `src` 替换为占位符；`VideoResolver` 对命中 video 同步 `removeAttribute("src")`；后处理器取到本地文件/签名 URL 后写回真实 `src`
+  - span/anchor 无需处理（非媒体元素不自动加载 src/href）
+- 新增测试 3 例；jest 8 套件 60 用例通过
+
 ## 2026-08-27 — 版本号 1.0.9
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.9`
