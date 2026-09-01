@@ -15,6 +15,7 @@ import S3LinkPlugin from "./main";
 import S3Link from "./model/s3Link";
 import { StorageClient } from "./network/storageClient";
 import { StorageClientFactory } from "./network/storageClientFactory";
+import { startPlaceholderGuard } from "./placeholderGuard";
 import { Logger } from "./logger";
 
 export class S3PostProcessor {
@@ -26,6 +27,7 @@ export class S3PostProcessor {
     private anchorResolver: AnchorResolver;
     private pluginSettings: PluginSettings;
     private clients: Map<string, StorageClient> = new Map();
+    private placeholderGuard: MutationObserver | null = null;
 
     constructor(plugin: S3LinkPlugin, cache: Cache, settings: PluginSettings) {
         this.cache = cache;
@@ -609,6 +611,28 @@ export class S3PostProcessor {
             return s3Link.versionToken;
         } else {
             return versionToken ?? null;
+        }
+    }
+
+    /**
+     * Starts a global guard that swaps any `src` attribute pointing to an
+     * unregistered `s3:` / `s3-sign:` scheme back to a neutral placeholder as
+     * soon as it is set (see `startPlaceholderGuard`). The MutationObserver
+     * callback runs before the browser actually loads the resource, which
+     * prevents `net::ERR_UNKNOWN_URL_SCHEME`.
+     */
+    public startPlaceholderGuard() {
+        this.stopPlaceholderGuard();
+        this.placeholderGuard = startPlaceholderGuard();
+    }
+
+    /**
+     * Stops the global placeholder guard (e.g. on plugin unload).
+     */
+    public stopPlaceholderGuard() {
+        if (this.placeholderGuard) {
+            this.placeholderGuard.disconnect();
+            this.placeholderGuard = null;
         }
     }
 }

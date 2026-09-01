@@ -19,6 +19,7 @@ Obsidian 插件（桌面端 + 移动端，移动端兼容已实现、待真机�
 - 缓存：`Cache`（`src/cache.ts`，versionToken + sha1 文件名 + sourceId 键；Vault 二进制写盘）
 - 网络：`StorageClient` 接口（含 `testConnection`）+ 3 适配器 + `StorageClientFactory` + `sigV4` / `ossSigner`（`src/network/`）
 - 平台工具：`src/platformUtil.ts`（Web Crypto 哈希/HMAC、Base64、路径、字节流收集）
+- 占位符守卫：`src/placeholderGuard.ts`（全局 MutationObserver，拦截 s3: src 避免 ERR_UNKNOWN_URL_SCHEME）
 - 日志：`src/logger.ts`（`Logger` + `LogLevel`，默认 INFO）
 - 国际化：`src/i18n.ts`（en/zh）
 - 设置 UI：`src/settings/settingsTab.ts`（语言 / 日志级别 / 自动替换开关 / Provider 下拉 / 端点自动组合 / 测试连接）

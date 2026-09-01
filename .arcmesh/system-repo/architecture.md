@@ -48,6 +48,7 @@ src/
 ├── i18n.ts                  # 多语言（en/zh），setLanguage / t(key)
 ├── logger.ts                # 统一日志（LogLevel 过滤，默认 INFO）
 ├── platformUtil.ts          # 平台工具（Web Crypto 哈希/HMAC、Base64、路径、字节流收集）
+├── placeholderGuard.ts      # 全局占位符守卫（MutationObserver 拦截 s3: src）
 ├── autoReplace.ts           # https:// → s3: 链接自动替换（正则 + 围栏感知）
 ├── cache.ts                 # 本地缓存（Vault 二进制写盘 + localStorage 元数据）
 ├── s3PostProcessor.ts       # Markdown 后处理器（多源编排核心）
@@ -86,6 +87,8 @@ src/
 > - `ImageResolver` 命中 `s3:` / `s3-sign:` 的 `img` 时，在任何 `await` 之前**同步**把 `src` 替换为 `Config.S3_LINK_PLACEHOLDER`（透明 GIF data URI），待后处理器取到本地文件或签名 URL 后再写回真实 `src`；
 > - `VideoResolver` 对命中 `video` 同步 `removeAttribute("src")`，同样由后处理器回填；
 > - `span` / `anchor` 不需要处理——非媒体元素不会自动加载 `src`/`href`。
+>
+> **全局占位符守卫（2026-09-01）**：post-processor 的同步替换仍可能被 Obsidian（live-preview 等）在渲染管线中绕过，导致 `src` 再次变为 `s3:`。新增 `src/placeholderGuard.ts`：全局 MutationObserver 监听 `document.body` 的 `src` 属性变化，一旦出现 `s3:` / `s3-sign:` 前缀立即替换为占位符（img）或移除 `src`（video）。observer 回调运行在浏览器实际加载之前，可阻止 ERR。由 `main.ts` onload 启动、onunload 停止。
 
 ### 4.5 缓存：`Cache`（`src/cache.ts`）
 
@@ -270,3 +273,4 @@ graph TD
 - **2026-08-27**：多对象存储支持、UI 增强、自动替换与 COS 浏览器 SDK 调整均已实现并落地，本文档已同步更新。
 - **2026-09-01**：s3: 链接占位符修复（`net::ERR_UNKNOWN_URL_SCHEME`，v1.0.10）已实现；日志级别设置（v1.0.9）已落地，详见 `decisions/2026-09-01-s3-link-placeholder.md`。
 - **2026-09-01**：移动端兼容改造已实现（移除 Node 依赖、Vault 二进制缓存、fetch + Web Crypto 签名），待真机验证后发布，详见 `decisions/2026-09-01-mobile-support.md`。
+- **2026-09-01**：s3: 链接全局占位符守卫已实现（`placeholderGuard.ts`，消除残余 `net::ERR_UNKNOWN_URL_SCHEME`）。

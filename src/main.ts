@@ -54,6 +54,10 @@ export default class S3LinkPlugin extends Plugin {
         this.addPluginCommands(this);
         this.registerVaultListeners();
 
+        // Global guard: swap any src that becomes an unregistered s3:/s3-sign:
+        // scheme back to the placeholder before the browser loads it.
+        this.s3PostProcessor.startPlaceholderGuard();
+
         if (isPluginReadyState(this.settings)) {
             this.setState(PluginState.READY);
         } else {
@@ -63,6 +67,8 @@ export default class S3LinkPlugin extends Plugin {
 
     async onunload() {
         Logger.info(`${this.moduleName}::onunload - Unloading plugin`);
+
+        this.s3PostProcessor.stopPlaceholderGuard();
     }
 
     async loadSettings() {

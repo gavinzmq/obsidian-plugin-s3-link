@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-01 — 修复 s3: 链接仍报 net::ERR_UNKNOWN_URL_SCHEME（全局占位符守卫）
+
+- 现象：`![](s3:...)` / `![](s3-sign:...)` 在控制台仍出现 `GET s3:... net::ERR_UNKNOWN_URL_SCHEME`；后处理器的同步占位符替换未覆盖 Obsidian（或 live-preview 等）在 post-processor 之外再次设置 `src` 的场景
+- 修复：新增 `src/placeholderGuard.ts`（全局 MutationObserver 守卫）：任何元素 `src` 被设为 `s3:` / `s3-sign:` 时立即替换为占位符（img）或移除 `src`（video）；observer 回调早于浏览器加载，阻止 ERR；`S3PostProcessor.startPlaceholderGuard()` 于 onload 启动、onunload 停止
+- 新增测试 7 例；jest 12 套件 88 用例通过
+
 ## 2026-09-01 — 版本号 1.1.0（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.1.0`
