@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.3.5（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.5`
+- 打标签 `v1.3.5` 并发布：点「编辑」一步进入可编辑 markdown（模拟指针点击）随本版本发布
+
+## 2026-09-01 — 点「编辑」一步进入可编辑源码（v1.3.5）
+
+- 现象：点插件「编辑」后 Obsidian 图片/占位仍在并显示其原生「编辑这个区块」按钮，需再点多次才出现链接——Obsidian 仅对“指针点击”才把嵌入/图片切换为可编辑源码文本，纯程序 dispatch 不触发
+- 修复（`src/editor/s3ImageWidget.ts`）：编辑按钮 dispatch 时把光标放到链接**正文起点**（wiki `[[` 后 = `from+3` / markdown `](` 后）+ `userEvent:"select.pointer"` 模拟指针选择 → Obsidian 一步切换源码
+- 验证：tsc 通过；jest 13 套件 / 104 用例通过
+
 ## 2026-09-01 — 版本号 1.3.4（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.4`

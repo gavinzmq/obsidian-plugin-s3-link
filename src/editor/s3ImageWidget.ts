@@ -258,13 +258,34 @@ export default class S3ImageWidget extends WidgetType {
             const range = this.controller.getRange();
 
             if (range) {
-                // Place the cursor inside the link body (not at the very edge)
-                // so Obsidian renders the raw markdown text right away and the
-                // user can start editing immediately, without the native
-                // "edit this block" hover button appearing first.
-                const pos =
-                    range.from + Math.floor((range.to - range.from) / 2);
-                view.dispatch({ selection: { anchor: pos, head: pos } });
+                // Place the cursor at the start of the link body (right after
+                // `[[` for wiki embeds / `](` for markdown links) and dispatch
+                // with a pointer userEvent. That mirrors a real click on the
+                // image, so Obsidian's built-in embed flips to editable source
+                // text in a single step (a plain programmatic dispatch is not
+                // enough - Obsidian only reveals the markdown on pointer
+                // interaction).
+                const inner = view.state.doc.sliceString(range.from, range.to);
+                let bodyStart: number;
+
+                if (inner.startsWith("![[")) {
+                    bodyStart = range.from + 3;
+                } else {
+                    const openParen = inner.indexOf("](");
+                    bodyStart =
+                        openParen < 0
+                            ? range.from + 1
+                            : range.from + openParen + 2;
+                }
+
+                const pos = Math.min(
+                    bodyStart,
+                    Math.max(range.from + 1, range.to - 1)
+                );
+                view.dispatch({
+                    selection: { anchor: pos, head: pos },
+                    userEvent: "select.pointer",
+                });
             }
         });
         actions.appendChild(zoomBtn);
