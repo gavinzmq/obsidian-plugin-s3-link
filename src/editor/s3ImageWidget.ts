@@ -16,19 +16,11 @@ const EDIT_ICON_SVG =
  * Creates a small icon button used for the hover actions (zoom / edit).
  * The mousedown is blocked so clicking the button never moves the cursor into
  * the link (which would make the image disappear before the action runs).
- *
- * @param allowMousedownBubbling when true the mousedown is NOT stopped, so
- * Obsidian's editor-level pointer handler receives the real interaction.
- * This is required for the "edit" button: Obsidian only flips an image embed
- * into editable source text after a real pointer event (its internal
- * livePreviewState.mousedown flag), so a fully synthetic dispatch leaves the
- * embed rendered as a placeholder instead.
  */
 function createActionButton(
     svg: string,
     title: string,
-    onClick: () => void,
-    allowMousedownBubbling = false
+    onClick: () => void
 ): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
@@ -60,10 +52,7 @@ function createActionButton(
 
     button.addEventListener("mousedown", (event) => {
         event.preventDefault();
-
-        if (!allowMousedownBubbling) {
-            event.stopPropagation();
-        }
+        event.stopPropagation();
     });
 
     button.addEventListener("click", (event) => {
@@ -310,48 +299,118 @@ export default class S3ImageWidget extends WidgetType {
         const zoomBtn = createActionButton(ZOOM_ICON_SVG, "放大", () => {
             showImageZoom(this.resolvedUrl || image.src);
         });
-        const editBtn = createActionButton(
-            EDIT_ICON_SVG,
-            "编辑",
-            () => {
+
+        // --- self-contained link editor -----------------------------------
+        // Obsidian keeps image embeds rendered even when the caret enters the
+        // link (no public API flips it to editable source), so trying to
+        // reveal the markdown via a synthetic selection never works and ends
+        // up showing a broken placeholder. Instead the "edit" action opens a
+        // textarea below the image pre-filled with the full markdown link;
+        // Enter / blur commits it back into the document, Escape cancels. The
+        // image stays visible the whole time and no placeholder appears.
+        const editor = document.createElement("textarea");
+        editor.className = "s3-link-plugin-editor-link-edit";
+        editor.style.cssText = [
+            "display:none",
+            "width:100%",
+            "min-width:320px",
+            "box-sizing:border-box",
+            "margin-top:6px",
+            "padding:6px 8px",
+            "font-family:var(--font-monospace)",
+            "font-size:12px",
+            "line-height:1.5",
+            "color:var(--text-normal)",
+            "background:var(--background-secondary)",
+            "border:1px solid var(--background-modifier-border)",
+            "border-radius:4px",
+            "resize:vertical",
+            "z-index:3",
+        ].join(";");
+
+        let editing = false;
+
+        const endEdit = (commit: boolean) => {
+            if (!editing) {
+                return;
+            }
+
+            editing = false;
+            editor.style.display = "none";
+            container.style.display = "inline-block";
+
+            if (commit) {
                 const range = this.controller.getRange();
 
                 if (range) {
-                    // Place the cursor at the start of the link body (right
-                    // after `](` for markdown links) and focus the view. The
-                    // mousedown was allowed to bubble (allowMousedownBubbling)
-                    // so Obsidian's pointer handler marked the interaction as a
-                    // real click (livePreviewState.mousedown); with the caret
-                    // now inside the link body Obsidian flips the embed into
-                    // editable source text in one step. A purely synthetic
-                    // dispatch (no pointer event) leaves the embed rendered as
-                    // a placeholder instead.
-                    const inner = view.state.doc.sliceString(
+                    const current = view.state.doc.sliceString(
                         range.from,
                         range.to
                     );
-                    const openParen = inner.indexOf("](");
-                    const bodyStart =
-                        openParen < 0
-                            ? range.from + 1
-                            : range.from + openParen + 2;
-                    const pos = Math.min(
-                        bodyStart,
-                        Math.max(range.from + 1, range.to - 1)
-                    );
+                    const next = editor.value;
 
-                    view.dispatch({
-                        selection: { anchor: pos, head: pos },
-                    });
-                    view.focus();
+                    if (next !== current) {
+                        view.dispatch({
+                            changes: {
+                                from: range.from,
+                                to: range.to,
+                                insert: next,
+                            },
+                        });
+                    }
                 }
-            },
-            true
-        );
+            }
+
+            actions.style.display = "flex";
+            handle.style.display = "block";
+        };
+
+        const startEdit = () => {
+            const range = this.controller.getRange();
+
+            if (!range) {
+                return;
+            }
+
+            editing = true;
+            editor.value = view.state.doc.sliceString(range.from, range.to);
+            actions.style.display = "none";
+            handle.style.display = "none";
+            container.style.display = "inline-flex";
+            container.style.flexDirection = "column";
+            editor.style.display = "block";
+            editor.focus();
+            editor.select();
+        };
+
+        editor.addEventListener("mousedown", (event) => {
+            // Keep the caret inside the textarea; don't let CodeMirror move it
+            // into the link (which would drop the widget mid-edit).
+            event.stopPropagation();
+        });
+        editor.addEventListener("keydown", (event) => {
+            event.stopPropagation();
+
+            if (event.key === "Enter") {
+                event.preventDefault();
+                endEdit(true);
+            } else if (event.key === "Escape") {
+                event.preventDefault();
+                endEdit(false);
+            }
+        });
+        editor.addEventListener("blur", () => {
+            endEdit(true);
+        });
+
+        const editBtn = createActionButton(EDIT_ICON_SVG, "编辑", () => {
+            startEdit();
+        });
         actions.appendChild(zoomBtn);
         actions.appendChild(editBtn);
 
         container.appendChild(image);
+        container.appendChild(editor);
         container.appendChild(actions);
         container.appendChild(handle);
 
