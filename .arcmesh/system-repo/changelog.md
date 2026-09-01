@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.2.2（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.2.2`
+- 打标签 `v1.2.2` 并发布：编辑视图（Live Preview）图片拖拽调整尺寸随本版本发布
+
+## 2026-09-01 — 编辑视图图片拖拽调整尺寸（v1.2.2）
+
+- 需求：编辑模式与 Obsidian 原生一致，可在图片边缘拖拽调整尺寸大小
+- 实现：
+  - `src/editor/s3ImageWidget.ts`：图片右下角 resize 手柄（`pointerdown` + `setPointerCapture` + `pointermove/up`），拖动实时调整宽高
+  - `src/editor/s3EditorExtension.ts`：拖动结束把尺寸写回链接 `![](s3:...|WxH)` / `![[s3:...|WxH]]`（`setLinkSize` 替换旧尺寸段、保留 `|alt`；`extractSize` 读回尺寸；`extractSchemeKey` 剥离 `|size` 后缀避免污染对象键）
+  - `commitResize` 闭包捕获 matchStart/matchEnd（拖拽期间文档不变，位置有效），`view.dispatch({ changes })` 自动映射选区，光标不跳走、图片保持显示
+- 验证：尺寸解析/写回逻辑（`|200`、`|200x150`、`|200|alt`、`|alt`、`s3-sign:`、普通 https 不误命中）实测通过；jest 12 套件 / 88 用例；tsc / eslint / 生产构建通过
+
 ## 2026-09-01 — 版本号 1.2.1（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.2.1`

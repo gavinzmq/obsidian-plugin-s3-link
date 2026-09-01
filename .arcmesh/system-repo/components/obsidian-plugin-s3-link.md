@@ -59,6 +59,7 @@ Obsidian 插件（桌面端 + 移动端，移动端兼容已实现、待真机�
 - 现象：阅读/预览视图正常显示 `s3:` 图片，但编辑视图（Live Preview）什么都没有、源码模式只有链接文本。
 - 根因：`registerMarkdownPostProcessor` 只在预览模式触发；Live Preview 用 CodeMirror 6 渲染，不会运行 post processor，`s3:` 非标准 scheme 也不被 Obsidian 原生图片扩展识别。
 - 修复：新增 `src/editor/` —— CodeMirror 6 `ViewPlugin`（`s3EditorExtension.ts`）用正则匹配 `![](s3:...)` / `![[s3:...]]` / `![[s3-sign:...]]`，用 `Decoration.replace` 替换为内联 `<img>` widget（`s3ImageWidget.ts`）；光标在链接内时不替换（保持可编辑）。widget 以占位符起步，异步经 `S3PostProcessor.resolveLinkResourceUrl` 解析真实资源路径（缓存命中直读，未命中按需下载；解析器去重，避免每次选区变化重复下载）。**只作用于 Live Preview**（`editorLivePreviewField` 门控，源码模式保持纯链接文本），且用 `Prec.highest` 包裹以覆盖 Obsidian 内置图片 widget。
+- 拖拽调尺寸（v1.2.2）：右下角 resize 手柄拖拽调整宽高，松手写回链接 `|WxH`（替换旧尺寸、保留 `|alt`）；渲染时读回尺寸。
 - `@codemirror/view` / `@codemirror/state` 保持 esbuild external，运行时由 Obsidian 提供；jest 12 套件 / 88 用例通过。
 
 ## 相关文档

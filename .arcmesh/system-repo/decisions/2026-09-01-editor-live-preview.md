@@ -37,6 +37,7 @@
 
 - **仅作用于 Live Preview（编辑模式）**：`buildDecorations` 用 `view.state.field(editorLivePreviewField, false)` 判定，源码模式下返回空 decorations，源码模式保持纯链接文本（不渲染图片）。
 - **必须用 `Prec.highest(...)` 包裹 ViewPlugin**：Live Preview 下 Obsidian 内置图片 widget 会把 `![](s3:...)` 渲染成 `<img src="s3:...">`（不可加载 → 占位符 → 不可见），覆盖我们的 decoration；最高优先级才能让我们的内联 `<img>` widget 胜出并正常显示。
+- **拖拽调尺寸（v1.2.2）**：右下角 resize 手柄拖拽调整宽高，松手写回链接 `|WxH`（`setLinkSize` 替换旧尺寸、保留 `|alt`）；`extractSchemeKey` 剥离 `|size` 后缀；渲染时 `extractSize` 读回尺寸。
 - 仅内联渲染图片 `img`；视频 / span / 锚点在编辑视图暂不渲染（源码模式仍可见链接文本）。
 - 编辑器内过期缓存不做远端 HEAD 校验（沿用本地缓存直读），避免选区每次移动触发网络请求；远端更新后的新版本在阅读视图重新渲染时生效。
 - 正则假定 `s3:` / `s3-sign:` 出现在链接目的地开头。

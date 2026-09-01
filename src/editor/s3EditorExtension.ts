@@ -9,7 +9,9 @@ import { Extension, Prec, RangeSetBuilder } from "@codemirror/state";
 import { editorLivePreviewField } from "obsidian";
 import { Logger } from "../logger";
 import S3LinkPlugin from "../main";
-import S3ImageWidget from "./s3ImageWidget";
+import S3ImageWidget, {
+    S3ImageWidgetController,
+} from "./s3ImageWidget";
 
 /**
  * Matches markdown image embeds whose destination uses the plugin's custom
@@ -24,6 +26,9 @@ const S3_IMAGE_LINK_REGEX =
  * `![](s3:images/x.jpeg)` -> `s3:images/x.jpeg` and
  * `![[s3-sign:bucket/foo.png]]` -> `s3-sign:bucket/foo.png`.
  *
+ * Any image-size suffix (`|400` / `|400x300`) is stripped so the object key
+ * stays clean.
+ *
  * @param match the full matched text
  */
 function extractSchemeKey(match: string): string {
@@ -36,7 +41,93 @@ function extractSchemeKey(match: string): string {
         inner = match.slice(open + 2, -1);
     }
 
-    return inner.trim();
+    inner = inner.trim();
+    const pipe = inner.indexOf("|");
+
+    return pipe >= 0 ? inner.slice(0, pipe) : inner;
+}
+
+/**
+ * Parses an explicit image size stored in a matched link, e.g.
+ * `![[s3:...|400]]` -> `{ width: 400, height: 0 }` and
+ * `![[s3:...|400x300]]` -> `{ width: 400, height: 300 }`. Returns null when
+ * the link carries no size (height 0 means auto / proportional).
+ *
+ * @param match the full matched text
+ */
+function extractSize(
+    match: string
+): { width: number; height: number } | null {
+    let inner: string;
+
+    if (match.startsWith("![[")) {
+        inner = match.slice(3, -2);
+    } else {
+        const open = match.indexOf("](");
+        inner = match.slice(open + 2, -1);
+    }
+
+    const pipe = inner.indexOf("|");
+
+    if (pipe < 0) {
+        return null;
+    }
+
+    const sizeMatch = /^\s*(\d+)(?:x(\d+))?/.exec(inner.slice(pipe + 1));
+
+    if (!sizeMatch) {
+        return null;
+    }
+
+    return {
+        width: parseInt(sizeMatch[1], 10),
+        height: sizeMatch[2] ? parseInt(sizeMatch[2], 10) : 0,
+    };
+}
+
+/**
+ * Rewrites a matched image link so it carries an explicit size, e.g.
+ * `![](s3:images/x.jpeg)` -> `![](s3:images/x.jpeg|400x300)`. An existing
+ * size segment is replaced in place (before any `|alt` suffix).
+ *
+ * @param matchText the full matched text
+ * @param width the new width in pixels
+ * @param height the new height in pixels
+ */
+function setLinkSize(matchText: string, width: number, height: number): string {
+    const size = `|${Math.round(width)}x${Math.round(height)}`;
+    const isWiki = matchText.startsWith("![[");
+
+    let inner: string;
+    if (isWiki) {
+        inner = matchText.slice(3, -2);
+    } else {
+        const open = matchText.indexOf("](");
+        const close = matchText.lastIndexOf(")");
+        inner = matchText.slice(open + 2, close);
+    }
+
+    // `url|size|alt` or `url|alt`: replace any leading size segment and keep
+    // the remaining segments (e.g. an alt caption) after the new size.
+    const parts = inner.split("|");
+    const url = parts[0];
+    const rest = parts.slice(1);
+    let alt: string[] = [];
+
+    if (rest.length > 0 && /^\s*\d+(?:x\d+)?\s*$/.test(rest[0])) {
+        alt = rest.slice(1);
+    } else {
+        alt = rest;
+    }
+
+    const altPart = alt.length > 0 ? `|${alt.join("|")}` : "";
+    const rebuilt = `${url}${size}${altPart}`;
+
+    if (isWiki) {
+        return `![[${rebuilt}]]`;
+    }
+
+    return `${matchText.slice(0, matchText.indexOf("](") + 2)}${rebuilt})`;
 }
 
 /**
@@ -134,18 +225,33 @@ class S3EditorPlugin {
             const matchEnd = matchStart + match[0].length;
 
             // Keep the raw markdown editable while the cursor is on the link.
-            if (matchStart < selTo && matchEnd > selFrom) {
+            // The check is boundary-inclusive: clicking a rendered image places
+            // the cursor at the range edge (from/to), which must also reveal
+            // the markdown for editing (native Obsidian behavior).
+            if (matchStart <= selTo && matchEnd >= selFrom) {
                 continue;
             }
 
             const schemeKey = extractSchemeKey(match[0]);
+            const initialSize = extractSize(match[0]);
 
             Logger.debug(
                 `S3EditorPlugin - Decorating s3 image link ${schemeKey}`
             );
 
-            const widget = new S3ImageWidget(schemeKey, (key) =>
-                this.resolver.resolve(key)
+            // The controller closes over the match range: the document cannot
+            // change while a drag is in progress, so from/to stay valid when
+            // the resize is committed.
+            const controller: S3ImageWidgetController = {
+                getRange: () => ({ from: matchStart, to: matchEnd }),
+                onResize: (width: number, height: number) =>
+                    this.commitResize(view, matchStart, matchEnd, width, height),
+            };
+            const widget = new S3ImageWidget(
+                schemeKey,
+                (key) => this.resolver.resolve(key),
+                initialSize,
+                controller
             );
 
             builder.add(
@@ -156,6 +262,37 @@ class S3EditorPlugin {
         }
 
         return builder.finish();
+    }
+
+    /**
+     * Persists the new size of a resized image back into the markdown link
+     * (`![[s3:...|WxH]]` / `![](s3:...|WxH)`). The editor maps the current
+     * selection across the change automatically, so the cursor stays put and
+     * the image stays visible.
+     *
+     * @param view the editor view
+     * @param from the start of the link range
+     * @param to the end of the link range
+     * @param width the new width in pixels
+     * @param height the new height in pixels
+     */
+    private commitResize(
+        view: EditorView,
+        from: number,
+        to: number,
+        width: number,
+        height: number
+    ) {
+        const text = view.state.doc.sliceString(from, to);
+        const newText = setLinkSize(text, width, height);
+
+        if (newText === text) {
+            return;
+        }
+
+        view.dispatch({
+            changes: { from, to, insert: newText },
+        });
     }
 }
 
