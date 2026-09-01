@@ -16,11 +16,19 @@ const EDIT_ICON_SVG =
  * Creates a small icon button used for the hover actions (zoom / edit).
  * The mousedown is blocked so clicking the button never moves the cursor into
  * the link (which would make the image disappear before the action runs).
+ *
+ * @param allowMousedownBubbling when true the mousedown is NOT stopped, so
+ * Obsidian's editor-level pointer handler receives the real interaction.
+ * This is required for the "edit" button: Obsidian only flips an image embed
+ * into editable source text after a real pointer event (its internal
+ * livePreviewState.mousedown flag), so a fully synthetic dispatch leaves the
+ * embed rendered as a placeholder instead.
  */
 function createActionButton(
     svg: string,
     title: string,
-    onClick: () => void
+    onClick: () => void,
+    allowMousedownBubbling = false
 ): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
@@ -52,7 +60,10 @@ function createActionButton(
 
     button.addEventListener("mousedown", (event) => {
         event.preventDefault();
-        event.stopPropagation();
+
+        if (!allowMousedownBubbling) {
+            event.stopPropagation();
+        }
     });
 
     button.addEventListener("click", (event) => {
@@ -299,40 +310,44 @@ export default class S3ImageWidget extends WidgetType {
         const zoomBtn = createActionButton(ZOOM_ICON_SVG, "放大", () => {
             showImageZoom(this.resolvedUrl || image.src);
         });
-        const editBtn = createActionButton(EDIT_ICON_SVG, "编辑", () => {
-            const range = this.controller.getRange();
+        const editBtn = createActionButton(
+            EDIT_ICON_SVG,
+            "编辑",
+            () => {
+                const range = this.controller.getRange();
 
-            if (range) {
-                // Place the cursor at the start of the link body (right after
-                // `[[` for wiki embeds / `](` for markdown links) and dispatch
-                // with a pointer userEvent. That mirrors a real click on the
-                // image, so Obsidian's built-in embed flips to editable source
-                // text in a single step (a plain programmatic dispatch is not
-                // enough - Obsidian only reveals the markdown on pointer
-                // interaction).
-                const inner = view.state.doc.sliceString(range.from, range.to);
-                let bodyStart: number;
-
-                if (inner.startsWith("![[")) {
-                    bodyStart = range.from + 3;
-                } else {
+                if (range) {
+                    // Place the cursor at the start of the link body (right
+                    // after `](` for markdown links) and focus the view. The
+                    // mousedown was allowed to bubble (allowMousedownBubbling)
+                    // so Obsidian's pointer handler marked the interaction as a
+                    // real click (livePreviewState.mousedown); with the caret
+                    // now inside the link body Obsidian flips the embed into
+                    // editable source text in one step. A purely synthetic
+                    // dispatch (no pointer event) leaves the embed rendered as
+                    // a placeholder instead.
+                    const inner = view.state.doc.sliceString(
+                        range.from,
+                        range.to
+                    );
                     const openParen = inner.indexOf("](");
-                    bodyStart =
+                    const bodyStart =
                         openParen < 0
                             ? range.from + 1
                             : range.from + openParen + 2;
-                }
+                    const pos = Math.min(
+                        bodyStart,
+                        Math.max(range.from + 1, range.to - 1)
+                    );
 
-                const pos = Math.min(
-                    bodyStart,
-                    Math.max(range.from + 1, range.to - 1)
-                );
-                view.dispatch({
-                    selection: { anchor: pos, head: pos },
-                    userEvent: "select.pointer",
-                });
-            }
-        });
+                    view.dispatch({
+                        selection: { anchor: pos, head: pos },
+                    });
+                    view.focus();
+                }
+            },
+            true
+        );
         actions.appendChild(zoomBtn);
         actions.appendChild(editBtn);
 
