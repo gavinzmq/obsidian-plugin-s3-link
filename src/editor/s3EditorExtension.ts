@@ -1,11 +1,5 @@
-import {
-    Decoration,
-    DecorationSet,
-    EditorView,
-    ViewPlugin,
-    ViewUpdate,
-} from "@codemirror/view";
-import { Extension, Prec, RangeSetBuilder } from "@codemirror/state";
+import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
+import { EditorState, Extension, Prec, RangeSetBuilder, StateField } from "@codemirror/state";
 import { editorLivePreviewField } from "obsidian";
 import { Logger } from "../logger";
 import S3LinkPlugin from "../main";
@@ -16,11 +10,20 @@ import S3ImageWidget, {
 
 /**
  * Matches markdown image embeds whose destination uses the plugin's custom
- * `s3:` / `s3-sign:` scheme, both the `![](...)` and the `![[...]]`
- * (wiki embed) form.
+ * `s3:` / `s3-sign:` scheme, e.g. `![](s3:images/x.jpeg)`. These render as
+ * inline `<img>` in Live Preview, so an inline decoration can override them.
  */
 const S3_IMAGE_LINK_REGEX =
-    /!\[[^\]]*\]\(\s*(s3-sign:|s3:)[^\s)]*\s*\)|!\[\[(s3-sign:|s3:)[^\]]*\]\]/g;
+    /!\[[^\]]*\]\(\s*(s3-sign:|s3:)[^\s)]*\s*\)/g;
+
+/**
+ * Matches wiki image embeds `![[s3:...]]` / `![[s3-sign:...]]`. Obsidian
+ * renders these as a BLOCK widget (`.cm-embed-block`) whose "找不到" text
+ * lives inside its own DOM, so an inline decoration can never override it.
+ * They are handled by a StateField-provided block decoration instead (see
+ * buildEmbedDecorations).
+ */
+const S3_EMBED_REGEX = /!\[\[(s3-sign:|s3:)[^\]]*\]\]/g;
 
 /**
  * Matches plain wiki links (no `!`) whose target uses the plugin's custom
@@ -286,23 +289,19 @@ class S3EditorLinkResolver {
 }
 
 /**
- * CodeMirror 6 ViewPlugin that replaces `![](s3:...)` / `![[s3:...]]` embeds
- * in the editor with an inline image widget, so Live Preview shows the images
- * instead of nothing. It deliberately applies ONLY in Live Preview: in source
- * mode the raw links must stay as plain text. The raw markdown stays editable:
- * when the cursor is inside a link the widget is not applied.
+ * CodeMirror 6 ViewPlugin that replaces `![](s3:...)` markdown embeds and
+ * plain `[[s3:...]]` wiki links in the editor with inline widgets, so Live
+ * Preview shows them instead of a broken image / red "找不到" text. It
+ * deliberately applies ONLY in Live Preview: in source mode the raw links
+ * must stay as plain text. The raw markdown stays editable: when the cursor
+ * is inside a link the widget is not applied.
  */
 class S3EditorPlugin {
     decorations: DecorationSet;
     private readonly resolver: S3EditorLinkResolver;
 
-    constructor(
-        view: EditorView,
-        getPostProcessor: () => S3LinkPlugin["s3PostProcessor"]
-    ) {
-        this.resolver = new S3EditorLinkResolver((rawKey) =>
-            getPostProcessor().resolveLinkResourceUrl(rawKey)
-        );
+    constructor(view: EditorView, resolver: S3EditorLinkResolver) {
+        this.resolver = resolver;
         this.decorations = this.buildDecorations(view);
     }
 
@@ -457,10 +456,90 @@ class S3EditorPlugin {
 }
 
 /**
+ * Builds block-level decorations that replace wiki image embeds
+ * (`![[s3:...jpg]]`) with an inline image widget in Live Preview.
+ *
+ * Obsidian renders `![[...]]` embeds as a BLOCK widget (`.cm-embed-block`)
+ * whose "找不到" text lives inside its own DOM; a line-level inline
+ * decoration can never cover it. Only a block decoration can take over the
+ * line, and CodeMirror forbids block widgets in dynamic (ViewPlugin-provided)
+ * decorations — hence this StateField, whose `provide` is a static source.
+ *
+ * Only image targets are handled; non-image embeds keep Obsidian's default
+ * rendering. The raw markdown stays editable: when the cursor is inside the
+ * embed the block decoration is skipped and Obsidian shows the source text.
+ */
+function buildEmbedDecorations(
+    state: EditorState,
+    resolver: S3EditorLinkResolver
+): DecorationSet {
+    const builder = new RangeSetBuilder<Decoration>();
+
+    // Only in Live Preview: in source mode the raw embed must stay as text.
+    if (!state.field(editorLivePreviewField, false)) {
+        return builder.finish();
+    }
+
+    const text = state.doc.toString();
+    const selection = state.selection.main;
+    const selFrom = Math.min(selection.from, selection.to);
+    const selTo = Math.max(selection.from, selection.to);
+    const isCollapsed = selection.from === selection.to;
+
+    S3_EMBED_REGEX.lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = S3_EMBED_REGEX.exec(text)) !== null) {
+        const matchStart = match.index;
+        const matchEnd = matchStart + match[0].length;
+
+        // Keep the raw markdown editable while the cursor is on the embed.
+        if (isCollapsed && selFrom > matchStart && selTo < matchEnd) {
+            continue;
+        }
+
+        const schemeKey = extractSchemeKey(match[0]);
+        const initialSize = extractSize(match[0]);
+
+        Logger.debug(
+            `S3EditorPlugin - Decorating s3 wiki embed ${schemeKey}`
+        );
+
+        // A StateField has no live EditorView to dispatch a resize, so the
+        // drag-resize action is disabled for block previews.
+        const controller: S3ImageWidgetController = {
+            getRange: () => ({ from: matchStart, to: matchEnd }),
+            onResize: () => {},
+        };
+        const widget = new S3ImageWidget(
+            schemeKey,
+            (key) => resolver.resolve(key),
+            initialSize,
+            controller
+        );
+
+        builder.add(
+            matchStart,
+            matchEnd,
+            Decoration.replace({ widget, block: true })
+        );
+    }
+
+    return builder.finish();
+}
+
+/**
  * Creates the CodeMirror extension that renders s3: images in the editor.
  * The post processor is resolved lazily so the extension can be registered
  * before/independent of the post processor instance and picks up rebuilt
  * settings automatically.
+ *
+ * Two sources are combined:
+ * - A ViewPlugin renders inline widgets for `![](s3:...)` markdown embeds and
+ *   plain `[[s3:...]]` wiki links.
+ * - A StateField renders a block widget for `![[s3:...]]` wiki embeds, which
+ *   Obsidian otherwise renders as an unoverridable block widget showing
+ *   "找不到".
  *
  * @param getPostProcessor returns the current S3PostProcessor instance
  *
@@ -469,19 +548,43 @@ class S3EditorPlugin {
 export function s3EditorExtension(
     getPostProcessor: () => S3LinkPlugin["s3PostProcessor"]
 ): Extension {
-    // Highest precedence so our widget wins over Obsidian's built-in image
-    // widget (which renders `![](s3:...)` as a broken/invisible image in Live
-    // Preview because the `s3:` scheme is not loadable).
-    return Prec.highest(
-        ViewPlugin.fromClass(
-            class extends S3EditorPlugin {
-                constructor(view: EditorView) {
-                    super(view, getPostProcessor);
-                }
-            },
-            {
-                decorations: (plugin: S3EditorPlugin) => plugin.decorations,
-            }
-        )
+    // One shared resolver dedupes + memoizes resource downloads across the
+    // inline widgets and the block widget.
+    const resolver = new S3EditorLinkResolver((rawKey) =>
+        getPostProcessor().resolveLinkResourceUrl(rawKey)
     );
+
+    // Inline widgets. Highest precedence so our widget wins over Obsidian's
+    // built-in image widget (which renders `![](s3:...)` as a
+    // broken/invisible image in Live Preview because the `s3:` scheme is not
+    // loadable).
+    const viewPlugin = ViewPlugin.fromClass(
+        class extends S3EditorPlugin {
+            constructor(view: EditorView) {
+                super(view, resolver);
+            }
+        },
+        {
+            decorations: (plugin: S3EditorPlugin) => plugin.decorations,
+        }
+    );
+
+    // Block-level preview for wiki image embeds `![[s3:...]]`. Provided via a
+    // StateField because CodeMirror rejects block widgets in dynamic
+    // (ViewPlugin) decorations.
+    const embedField = StateField.define<DecorationSet>({
+        create(state) {
+            return buildEmbedDecorations(state, resolver);
+        },
+        update(deco, tr) {
+            if (tr.docChanged || tr.selection) {
+                return buildEmbedDecorations(tr.state, resolver);
+            }
+
+            return deco;
+        },
+        provide: (field) => Prec.highest(EditorView.decorations.from(field)),
+    });
+
+    return Prec.highest([viewPlugin, embedField]);
 }
