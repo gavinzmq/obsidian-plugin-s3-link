@@ -268,6 +268,11 @@ class S3EditorPlugin {
         const selection = view.state.selection.main;
         const selFrom = Math.min(selection.from, selection.to);
         const selTo = Math.max(selection.from, selection.to);
+        // Only a collapsed (single-cursor) selection inside a link reveals the
+        // raw markdown for editing. A non-collapsed selection (e.g. the user
+        // drag-selecting across the image) must keep the image widget visible,
+        // otherwise the image disappears the moment it is selected.
+        const isCollapsed = selection.from === selection.to;
 
         S3_IMAGE_LINK_REGEX.lastIndex = 0;
         let match: RegExpExecArray | null;
@@ -277,11 +282,12 @@ class S3EditorPlugin {
             const matchEnd = matchStart + match[0].length;
 
             // Keep the raw markdown editable while the cursor is on the link.
-            // The check is boundary-inclusive: clicking the "edit" action on a
-            // rendered image places the cursor at the range edge (from/to),
-            // which must also reveal the markdown for editing. A single click
-            // leaves the cursor alone so the image stays visible.
-            if (matchStart <= selTo && matchEnd >= selFrom) {
+            // The check is boundary-inclusive and only applies to a collapsed
+            // cursor: clicking the "edit" action places the cursor inside the
+            // link, which must reveal the markdown for editing. A selection
+            // spanning the image (or a single click elsewhere) leaves the
+            // image visible.
+            if (isCollapsed && matchStart <= selTo && matchEnd >= selFrom) {
                 continue;
             }
 

@@ -248,9 +248,13 @@ export default class S3ImageWidget extends WidgetType {
             const range = this.controller.getRange();
 
             if (range) {
-                view.dispatch({
-                    selection: { anchor: range.from, head: range.from },
-                });
+                // Place the cursor inside the link body (not at the very edge)
+                // so Obsidian renders the raw markdown text right away and the
+                // user can start editing immediately, without the native
+                // "edit this block" hover button appearing first.
+                const pos =
+                    range.from + Math.floor((range.to - range.from) / 2);
+                view.dispatch({ selection: { anchor: pos, head: pos } });
             }
         });
         actions.appendChild(zoomBtn);

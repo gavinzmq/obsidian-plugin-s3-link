@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.3.3（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.3`
+- 打标签 `v1.3.3` 并发布：编辑模式图片选中不再消失 + 点「编辑」直接进入可编辑（不再弹原生按钮）随本版本发布
+
+## 2026-09-01 — 图片选中不再消失 + 编辑按钮直接可编辑（v1.3.3）
+
+- 现象：
+  - 拖拽框选图片时图片消失——非折叠选区覆盖链接被误判为“光标在链接内”，`buildDecorations` 移除 widget
+  - 点「编辑」后弹出 Obsidian 原生“编辑这个区块”按钮——光标放在链接边界（`range.from`），Obsidian 内置 widget 判定光标在链接外仍渲染图片
+- 修复：
+  - `src/editor/s3EditorExtension.ts`：重叠判断仅对 collapsed selection（`selection.from === selection.to`）生效，框选图片保留 widget
+  - `src/editor/s3ImageWidget.ts`：编辑按钮把光标放进链接**内容中间**（`range.from + (to-from)/2`），Obsidian 直接显示可编辑 markdown，不再触发原生按钮
+- 验证：tsc 通过；jest 13 套件 / 104 用例通过
+
 ## 2026-09-01 — 版本号 1.3.2（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.2`
