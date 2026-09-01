@@ -8,6 +8,7 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     name: Lint / Test / Build
+    timeout-minutes: 15
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
@@ -31,3 +32,10 @@ jobs:
         run: |
           npx tsc -noEmit -skipLibCheck
           node esbuild.config.mjs production
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: main.js
+          path: main.js
+          if-no-files-found: error
