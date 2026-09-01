@@ -6,6 +6,7 @@ import {
     getCacheFileUrl,
     getVaultResourcePath,
 } from "./obsidianHelper";
+import { getFileExtension } from "./platformUtil";
 import { PluginSettings, resolveSourceKey } from "./settings/settings";
 import ImageResolver from "./resolver/imageResolver";
 import VideoResolver from "./resolver/videoResolver";
@@ -16,6 +17,25 @@ import S3Link from "./model/s3Link";
 import { StorageClient } from "./network/storageClient";
 import { StorageClientFactory } from "./network/storageClientFactory";
 import { Logger } from "./logger";
+
+/**
+ * File extensions Obsidian treats as images. Used to detect wiki image embeds
+ * (`![[s3:...jpg]]`) rendered as `internal-embed` spans, which must be
+ * replaced with a real `<img>` to show in reading mode.
+ */
+const IMAGE_EXTENSIONS = new Set([
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".svg",
+    ".avif",
+    ".ico",
+    ".tif",
+    ".tiff",
+]);
 
 export class S3PostProcessor {
     private readonly moduleName = "S3PostProcessor";
@@ -409,10 +429,63 @@ export class S3PostProcessor {
                     );
                 }
             } else if (htmlElement instanceof HTMLSpanElement) {
-                htmlElement.setAttribute(
-                    "src",
-                    await getCacheFileName(objectKey, versionToken)
+                const cacheFileName = await getCacheFileName(
+                    objectKey,
+                    versionToken
                 );
+                htmlElement.setAttribute("src", cacheFileName);
+
+                // Obsidian renders wiki image embeds (`![[s3:...]]`) as
+                // `internal-embed` spans. When the embed target could not be
+                // resolved Obsidian shows a "not found" placeholder and does
+                // NOT re-render the embed when only the `src` attribute
+                // changes. For image embeds, replace the embed content with a
+                // real <img> pointing at the cached file so the image renders
+                // in reading mode. Audio / PDF embeds keep the src-only path
+                // (Obsidian re-renders those from a changed src).
+                if (this.isImageEmbedSpan(htmlElement, objectKey)) {
+                    const resourcePath = await this.getResourcePath(
+                        resource,
+                        sourceId,
+                        objectKey
+                    );
+
+                    if (resourcePath) {
+                        const img = document.createElement("img");
+                        img.src = resourcePath;
+                        img.setAttribute(
+                            Config.S3_LINK_PLUGIN_DATA_ATTRIBUTE,
+                            rawKey
+                        );
+                        htmlElement.replaceChildren(img);
+                        htmlElement.classList.add("is-loaded");
+
+                        // Keep a wiki-embed size (`![[s3:...|W]]`) applied by
+                        // Obsidian on the embed container.
+                        const width = htmlElement.getAttribute("width");
+
+                        if (width) {
+                            img.style.width = `${width}px`;
+                        }
+
+                        if (resource instanceof S3Link) {
+                            img.addEventListener(
+                                "error",
+                                () => {
+                                    getCacheFileUrl(
+                                        resource.objectKey,
+                                        resource.versionToken
+                                    ).then((fallbackUrl) => {
+                                        if (fallbackUrl) {
+                                            img.src = fallbackUrl;
+                                        }
+                                    });
+                                },
+                                { once: true }
+                            );
+                        }
+                    }
+                }
             } else if (htmlElement instanceof HTMLAnchorElement) {
                 htmlElement.href = `${Config.OBSIDIAN_APP_LINK_PREFIX}${await getCacheFileName(
                     objectKey,
@@ -425,6 +498,24 @@ export class S3PostProcessor {
                 rawKey
             );
         }
+    }
+
+    /**
+     * True when the given span is an Obsidian image embed (a wiki embed
+     * `![[s3:...]]` whose target is an image) that must be rendered as an
+     * inline `<img>`. A span is treated as an image embed when Obsidian tagged
+     * it with the `image-embed` class, or when the resolved object key points
+     * to an image file.
+     *
+     * @param element the span element rendered by Obsidian
+     * @param objectKey the resolved S3 object key
+     */
+    private isImageEmbedSpan(element: HTMLElement, objectKey: string): boolean {
+        if (element.classList.contains("image-embed")) {
+            return true;
+        }
+
+        return IMAGE_EXTENSIONS.has(getFileExtension(objectKey).toLowerCase());
     }
 
     /**

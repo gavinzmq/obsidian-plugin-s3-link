@@ -43,7 +43,13 @@ export default class SpanResolver extends Resolver {
         }
 
         spanElements.forEach((spanElement) => {
-            const src = spanElement.getAttribute("src");
+            // Obsidian renders wiki embeds (`![[s3:...]]`) as internal-embed
+            // spans. For resolved embeds the resource is stored in `src`; some
+            // Obsidian versions / embed kinds keep the link target in
+            // `data-src` only, so both attributes are checked.
+            const src =
+                spanElement.getAttribute("src") ||
+                spanElement.getAttribute("data-src");
 
             if (src) {
                 const parts = src.split(Config.S3_LINK_SPLITTER);
@@ -54,7 +60,10 @@ export default class SpanResolver extends Resolver {
                         src
                     );
 
-                    this.addObjectKey(parts[this.s3LinkRightPart], spanElement);
+                    this.addObjectKey(
+                        this.stripImageSizeSuffix(parts[this.s3LinkRightPart]),
+                        spanElement
+                    );
                 } else if (
                     parts[this.s3LinkLeftPart] == Config.S3_SIGNED_LINK_PREFIX
                 ) {

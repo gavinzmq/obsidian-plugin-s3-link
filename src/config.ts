@@ -13,9 +13,13 @@ export default abstract class Config {
      * attempt to load an unknown URL scheme and log
      * `net::ERR_UNKNOWN_URL_SCHEME`. Swapping it out synchronously (before any
      * async work) prevents that error entirely.
+     *
+     * The placeholder is a visible light-gray box with an image glyph (SVG
+     * data URI) so an unresolved / still-loading link shows a clear
+     * placeholder instead of an invisible 1x1 image.
      */
     static readonly S3_LINK_PLACEHOLDER =
-        "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+        "data:image/svg+xml;utf8,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='160'%20height='120'%20viewBox='0%200%20160%20120'%3E%3Crect%20width='160'%20height='120'%20rx='6'%20fill='%23ececf0'/%3E%3Cg%20fill='none'%20stroke='%23b9b9c0'%20stroke-width='5'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Crect%20x='44'%20y='36'%20width='72'%20height='50'%20rx='5'/%3E%3Ccircle%20cx='64'%20cy='52'%20r='6'/%3E%3Cpath%20d='M44%2084%20l16-18%2012%2012%208-7%2036%2013'/%3E%3C/g%3E%3C/svg%3E";
     static readonly S3_LINK_EXPIRATION_TIME_SECONDS = 60 * 60; // 1 hour
     static readonly S3_SIGNED_LINK_PREFIX = "s3-sign";
     static readonly S3_SIGNED_LINK_EXPIRATION_TIME_SECONDS = 60 * 60 * 24 * 7; // 7 days

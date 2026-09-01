@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.4.0（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.4.0`
+- 打标签 `v1.4.0` 并发布：阅读模式渲染 `![[s3:...]]` 图片嵌入 + 可见占位符随本版本发布
+
+## 2026-09-01 — 阅读模式渲染 wiki 图片嵌入 + 可见占位符（v1.4.0）
+
+- 现象：
+  - `![[s3:...jpg]]`（wiki 嵌入）在阅读模式显示「找不到 s3:...」、无图片；编辑模式（Live Preview）经编辑器扩展能正常显示图片
+  - 点「编辑」露出源码后 `s3:` 资源被占位符守卫替换成 1×1 透明 GIF →「没有占位」/「占位空白」，无 `|w` 时几乎看不到任何东西
+- 根因：
+  - Obsidian 把 `![[s3:...]]` 渲染成 `span.internal-embed` 嵌入，未解析的嵌入不生成 `<img src="s3:...">`，`ImageResolver` 抓不到；`SpanResolver` 只改 `src` 属性，Obsidian 不会仅因 `src` 变化重渲染图片嵌入 → 阅读模式一直显示「找不到」
+  - 占位符是 1×1 透明 GIF，视觉上等于没有占位
+- 修复：
+  - `src/resolver/spanResolver.ts`：同时识别 `src` / `data-src` 属性，objectKey 统一走 `stripImageSizeSuffix`（剥离 `|WxH` / `%7CWxH` 尺寸后缀并解码）
+  - `src/s3PostProcessor.ts`：`updateLinkReferences` 对 `image-embed` span（含 `|W` 尺寸保留、`is-loaded`、error 回退 file://）在设置 `src` 之外直接注入指向缓存文件的 `<img>`，阅读模式即可显示图片；PDF / 音频等 span 保持原有 src-only 路径
+  - `src/config.ts`：`S3_LINK_PLACEHOLDER` 从 1×1 透明 GIF 改为可见的浅灰底 + 图片图标 SVG data URI，未加载 / 解析中显示清晰占位
+- 验证：tsc 通过；jest 13 套件 / 107 用例通过；esbuild production 构建通过
+
 ## 2026-09-01 — 版本号 1.3.5（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.5`
