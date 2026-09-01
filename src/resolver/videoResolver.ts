@@ -57,7 +57,10 @@ export default class VideoResolver extends Resolver {
                 // processor once the file is available.
                 videoElement.removeAttribute("src");
 
-                this.addObjectKey(parts[this.s3LinkRightPart], videoElement);
+                this.addObjectKey(
+                    this.stripImageSizeSuffix(parts[this.s3LinkRightPart]),
+                    videoElement
+                );
             } else if (
                 parts[this.s3LinkLeftPart] == Config.S3_SIGNED_LINK_PREFIX
             ) {
@@ -69,7 +72,7 @@ export default class VideoResolver extends Resolver {
                 videoElement.removeAttribute("src");
 
                 this.addSignObjectKey(
-                    parts[this.s3LinkRightPart],
+                    this.stripImageSizeSuffix(parts[this.s3LinkRightPart]),
                     videoElement
                 );
             }

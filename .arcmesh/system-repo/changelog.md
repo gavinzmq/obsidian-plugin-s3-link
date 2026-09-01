@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.3.0（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.0`
+- 打标签 `v1.3.0` 并发布：图片尺寸格式遵循 Obsidian 原生 + 修复 `%7C` 尺寸后缀 404 随本版本发布
+
+## 2026-09-01 — 图片尺寸格式遵循 Obsidian 原生 + 修复 `%7C` 404（v1.3.0）
+
+- 现象：`![](s3:...|WxH)`（尺寸写在 URL 后）渲染时 Obsidian 把 `|` 编码为 `%7C`，插件把 `|WxH` 当作 objectKey 请求 → `HEAD ...jpeg%7C368x219` 404
+- 修复：
+  - `src/editor/s3EditorExtension.ts`：`setLinkSize` 拖拽写回尺寸改为 Obsidian 原生 `![alt|WxH](url)`（尺寸在 `[]` 内），wiki 格式 `![[...|WxH]]` 不变；旧的 `![](url|WxH)` 会被迁移/清理；`extractSize` 支持从 `[]` 内读尺寸（兼容旧 `()` 内写法）；导出 `extractSchemeKey`/`extractSize`/`setLinkSize` 便于测试
+  - `src/resolver/resolver.ts`（基类新增 `stripImageSizeSuffix`）+ `imageResolver.ts`/`videoResolver.ts`：解码 `%7C` 并剥离末尾 `|WxH` 尺寸后缀，兼容已有旧格式笔记
+- 验证：jest 13 套件 / 104 用例通过；tsc 通过；esbuild 本地缺平台二进制（发布走 GitHub Actions）
+
 ## 2026-09-01 — 版本号 1.2.2（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.2.2`

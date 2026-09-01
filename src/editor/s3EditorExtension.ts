@@ -31,7 +31,7 @@ const S3_IMAGE_LINK_REGEX =
  *
  * @param match the full matched text
  */
-function extractSchemeKey(match: string): string {
+export function extractSchemeKey(match: string): string {
     let inner: string;
 
     if (match.startsWith("![[")) {
@@ -53,81 +53,133 @@ function extractSchemeKey(match: string): string {
  * `![[s3:...|400x300]]` -> `{ width: 400, height: 300 }`. Returns null when
  * the link carries no size (height 0 means auto / proportional).
  *
+ * Obsidian-native sizes are written inside the brackets:
+ * `![alt|400](url)` / `![alt|400x300](url)`; the legacy destination form
+ * `![](url|400x300)` is also accepted for backwards compatibility.
+ *
  * @param match the full matched text
  */
-function extractSize(
+export function extractSize(
     match: string
 ): { width: number; height: number } | null {
-    let inner: string;
+    const parseSegment = (segment: string) => {
+        const pipe = segment.indexOf("|");
+
+        if (pipe < 0) {
+            return null;
+        }
+
+        const sizeMatch = /^\s*(\d+)(?:x(\d+))?/.exec(segment.slice(pipe + 1));
+
+        if (!sizeMatch) {
+            return null;
+        }
+
+        return {
+            width: parseInt(sizeMatch[1], 10),
+            height: sizeMatch[2] ? parseInt(sizeMatch[2], 10) : 0,
+        };
+    };
 
     if (match.startsWith("![[")) {
-        inner = match.slice(3, -2);
-    } else {
-        const open = match.indexOf("](");
-        inner = match.slice(open + 2, -1);
+        // `![[url|WxH]]`
+        return parseSegment(match.slice(3, -2));
     }
 
-    const pipe = inner.indexOf("|");
+    const open = match.indexOf("](");
 
-    if (pipe < 0) {
+    if (open < 0) {
         return null;
     }
 
-    const sizeMatch = /^\s*(\d+)(?:x(\d+))?/.exec(inner.slice(pipe + 1));
+    // `![alt|WxH](url)` — Obsidian-native size lives in the brackets.
+    const bracketSize = parseSegment(match.slice(2, open));
 
-    if (!sizeMatch) {
-        return null;
+    if (bracketSize) {
+        return bracketSize;
     }
 
-    return {
-        width: parseInt(sizeMatch[1], 10),
-        height: sizeMatch[2] ? parseInt(sizeMatch[2], 10) : 0,
-    };
+    // `![](url|WxH)` — legacy size in the destination.
+    return parseSegment(match.slice(open + 2, -1));
 }
 
 /**
- * Rewrites a matched image link so it carries an explicit size, e.g.
- * `![](s3:images/x.jpeg)` -> `![](s3:images/x.jpeg|400x300)`. An existing
- * size segment is replaced in place (before any `|alt` suffix).
+ * Rewrites a matched image link so it carries an explicit size. For the
+ * wiki form the size stays before `]]` (`![[s3:...|400x300]]`); for the
+ * markdown form the size is written into the brackets like native Obsidian:
+ * `![alt|400x300](s3:...)`. An existing size segment is replaced in place
+ * and any alt caption is preserved. Legacy `![](url|WxH)` links are migrated
+ * to the Obsidian-native `![alt|WxH](url)` layout.
  *
  * @param matchText the full matched text
  * @param width the new width in pixels
  * @param height the new height in pixels
  */
-function setLinkSize(matchText: string, width: number, height: number): string {
+export function setLinkSize(
+    matchText: string,
+    width: number,
+    height: number
+): string {
     const size = `|${Math.round(width)}x${Math.round(height)}`;
-    const isWiki = matchText.startsWith("![[");
 
-    let inner: string;
-    if (isWiki) {
-        inner = matchText.slice(3, -2);
+    // Splits `url|size|alt` / `url|alt` into the clean url and the remaining
+    // (non-size) segments, replacing any leading size segment.
+    const splitSegments = (inner: string) => {
+        const parts = inner.split("|");
+        const url = parts[0];
+        let rest = parts.slice(1);
+
+        if (rest.length > 0 && /^\s*\d+(?:x\d+)?\s*$/.test(rest[0])) {
+            rest = rest.slice(1);
+        }
+
+        return { url, rest };
+    };
+
+    if (matchText.startsWith("![[")) {
+        // `![[url|alt]]` -> `![[url|WxH|alt]]`
+        const { url, rest } = splitSegments(matchText.slice(3, -2));
+        const restPart = rest.length > 0 ? `|${rest.join("|")}` : "";
+
+        return `![[${url}${size}${restPart}]]`;
+    }
+
+    const open = matchText.indexOf("](");
+    const close = matchText.lastIndexOf(")");
+
+    if (open < 0 || close < 0) {
+        return matchText;
+    }
+
+    const bracket = matchText.slice(2, open); // e.g. `alt`, `alt|200` or ``
+    const { url, rest } = splitSegments(matchText.slice(open + 2, close));
+
+    // Keep the alt caption from the brackets, dropping an existing size
+    // segment (`![|200]` empty alt / `![alt|200]` alt first), and migrate any
+    // alt segments that were stored after the url into the brackets.
+    const bracketParts = bracket.split("|");
+    let alt: string[];
+
+    if (
+        bracketParts.length > 0 &&
+        /^\s*\d+(?:x\d+)?\s*$/.test(bracketParts[0])
+    ) {
+        // `![|200]` — empty alt, size first.
+        alt = bracketParts.slice(1);
+    } else if (
+        bracketParts.length > 1 &&
+        /^\s*\d+(?:x\d+)?\s*$/.test(bracketParts[1])
+    ) {
+        // `![alt|200]` — alt then size.
+        alt = [bracketParts[0]].concat(bracketParts.slice(2));
     } else {
-        const open = matchText.indexOf("](");
-        const close = matchText.lastIndexOf(")");
-        inner = matchText.slice(open + 2, close);
+        alt = bracketParts;
     }
 
-    // `url|size|alt` or `url|alt`: replace any leading size segment and keep
-    // the remaining segments (e.g. an alt caption) after the new size.
-    const parts = inner.split("|");
-    const url = parts[0];
-    const rest = parts.slice(1);
-    let alt: string[] = [];
+    alt = alt.concat(rest);
+    const altPart = alt.length > 0 ? alt.join("|") : "";
 
-    if (rest.length > 0 && /^\s*\d+(?:x\d+)?\s*$/.test(rest[0])) {
-        alt = rest.slice(1);
-    } else {
-        alt = rest;
-    }
-
-    const altPart = alt.length > 0 ? `|${alt.join("|")}` : "";
-    const rebuilt = `${url}${size}${altPart}`;
-
-    if (isWiki) {
-        return `![[${rebuilt}]]`;
-    }
-
-    return `${matchText.slice(0, matchText.indexOf("](") + 2)}${rebuilt})`;
+    return `![${altPart}${size}](${url})`;
 }
 
 /**
@@ -266,9 +318,9 @@ class S3EditorPlugin {
 
     /**
      * Persists the new size of a resized image back into the markdown link
-     * (`![[s3:...|WxH]]` / `![](s3:...|WxH)`). The editor maps the current
-     * selection across the change automatically, so the cursor stays put and
-     * the image stays visible.
+     * (`![[s3:...|WxH]]` / `![alt|WxH](s3:...)` — the Obsidian-native form).
+     * The editor maps the current selection across the change automatically,
+     * so the cursor stays put and the image stays visible.
      *
      * @param view the editor view
      * @param from the start of the link range

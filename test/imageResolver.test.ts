@@ -60,6 +60,28 @@ describe("ImageResolver", () => {
 
             expect(img.src).toBe("https://example.com/image.png");
         });
+
+        it("should strip a percent-encoded image-size suffix from the object key", () => {
+            const element = document.createElement("div");
+            const img1 = document.createElement("img");
+            img1.src = `${Config.S3_LINK_PREFIX}${Config.S3_LINK_SPLITTER}images/x.jpeg%7C400x300`;
+            const img2 = document.createElement("img");
+            img2.src = `${Config.S3_SIGNED_LINK_PREFIX}${Config.S3_LINK_SPLITTER}images/y.png%7C200`;
+
+            element.appendChild(img1);
+            element.appendChild(img2);
+
+            const result = resolver.resolveHtmlElement(element);
+
+            expect(result.objectKeys.get("images/x.jpeg")).toHaveLength(1);
+            expect(result.signObjectKeys.get("images/y.png")).toHaveLength(1);
+            expect(result.objectKeys.has("images/x.jpeg%7C400x300")).toBe(
+                false
+            );
+            expect(result.signObjectKeys.has("images/y.png%7C200")).toBe(
+                false
+            );
+        });
     });
 
     describe("findAllObjectKeysInElement", () => {

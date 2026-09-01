@@ -58,7 +58,10 @@ export default class ImageResolver extends Resolver {
                 // net::ERR_UNKNOWN_URL_SCHEME on every render.
                 imageElement.src = Config.S3_LINK_PLACEHOLDER;
 
-                this.addObjectKey(parts[this.s3LinkRightPart], imageElement);
+                this.addObjectKey(
+                    this.stripImageSizeSuffix(parts[this.s3LinkRightPart]),
+                    imageElement
+                );
             } else if (
                 parts[this.s3LinkLeftPart] == Config.S3_SIGNED_LINK_PREFIX
             ) {
@@ -70,7 +73,7 @@ export default class ImageResolver extends Resolver {
                 imageElement.src = Config.S3_LINK_PLACEHOLDER;
 
                 this.addSignObjectKey(
-                    parts[this.s3LinkRightPart],
+                    this.stripImageSizeSuffix(parts[this.s3LinkRightPart]),
                     imageElement
                 );
             }

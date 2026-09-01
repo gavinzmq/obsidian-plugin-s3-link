@@ -19,6 +19,28 @@ export default abstract class Resolver {
 
     public abstract findAllObjectKeysInElement(element: HTMLElement): string[];
 
+    /**
+     * Strips an image-size suffix (`|400` / `|400x300`) that Obsidian appends
+     * to the rendered src as a percent-encoded `%7C` segment (e.g.
+     * `s3:images/x.jpeg%7C400x300`). The size is display metadata only and
+     * must not be treated as part of the object key. This covers legacy links
+     * written as `![](s3:...|WxH)`; for the Obsidian-native form
+     * (`![alt|WxH](s3:...)`) Obsidian already strips the size from the src.
+     *
+     * @param rawKey the raw (possibly percent-encoded) key from the element
+     */
+    protected stripImageSizeSuffix(rawKey: string): string {
+        let key = rawKey;
+
+        try {
+            key = decodeURIComponent(rawKey);
+        } catch (error) {
+            // Keep the raw key when it is not valid percent-encoding.
+        }
+
+        return key.replace(/\|\d+(?:x\d+)?$/, "");
+    }
+
     protected addObjectKey(objectKey: string, htmlElement: HTMLElement) {
         if (this.objectKeys.has(objectKey)) {
             this.objectKeys.get(objectKey)?.push(htmlElement);

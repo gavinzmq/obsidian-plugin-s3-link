@@ -29,7 +29,7 @@ export interface S3ImageWidgetController {
  *   becomes editable.
  * - Hovering shows a resize handle at the bottom-right corner; dragging it
  *   resizes the image and persists the new size back into the link
- *   (`![[s3:...|WxH]]` / `![](s3:...|WxH)`).
+ *   (`![[s3:...|WxH]]` / `![alt|WxH](s3:...)`).
  */
 export default class S3ImageWidget extends WidgetType {
     constructor(
@@ -95,6 +95,9 @@ export default class S3ImageWidget extends WidgetType {
         });
 
         // --- drag-to-resize handle (native Obsidian style) -----------------
+        // The committed size is written into the link brackets for the
+        // markdown form (`![alt|WxH](url)`), matching how native Obsidian
+        // stores image dimensions.
         const handle = document.createElement("div");
         handle.className = "s3-link-plugin-editor-resize-handle";
         handle.style.cssText = [
