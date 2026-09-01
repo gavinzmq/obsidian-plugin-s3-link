@@ -1,17 +1,12 @@
-import { FileSystemAdapter, TFile } from "obsidian";
+import { TFile } from "obsidian";
 import Config from "./config";
 import S3Link from "./model/s3Link";
 import S3SignedLink from "./model/s3SignedLink";
-import * as path from "path";
-import * as fs from "fs";
-import { Readable } from "stream";
-import { createWriteStream } from "fs";
-import { getCacheFileName } from "./obsidianHelper";
+import { getCacheFileName, getCacheRelativePath } from "./obsidianHelper";
 import { Logger } from "./logger";
 
 export default class Cache {
     private readonly moduleName = "Cache";
-    private openStreams: fs.WriteStream[] = [];
 
     public async init() {
         const isFolderExisting = await this.isCacheFolderPresent();
@@ -20,7 +15,7 @@ export default class Cache {
             Logger.info(
                 `${this.moduleName}: Creating cache folder for the first time`
             );
-            this.createCacheFolderInBasePath();
+            await this.createCacheFolderInBasePath();
         } else {
             Logger.info(
                 `${this.moduleName}: S3 cache initialization already done`
@@ -59,8 +54,7 @@ export default class Cache {
      */
     private async isCacheFolderPresent(): Promise<boolean> {
         try {
-            await fs.promises.access(this.getCachePath(), fs.constants.F_OK);
-            return true;
+            return await app.vault.adapter.exists(Config.CACHE_FOLDER);
         } catch (err) {
             return false;
         }
@@ -69,114 +63,75 @@ export default class Cache {
     /**
      * Creates the cache folder in the root of the vault.
      */
-    private createCacheFolderInBasePath() {
-        app.vault
-            .createFolder(Config.CACHE_FOLDER)
-            .then(() => {
-                Logger.debug(
-                    `${this.moduleName}: Creating cache folder ${Config.CACHE_FOLDER} in root`
-                );
-            })
-            .catch((error) => {
-                Logger.error(
-                    `${this.moduleName}: Error creating cache folder`,
-                    error
-                );
-            });
+    private async createCacheFolderInBasePath() {
+        try {
+            await app.vault.createFolder(Config.CACHE_FOLDER);
+            Logger.debug(
+                `${this.moduleName}: Creating cache folder ${Config.CACHE_FOLDER} in root`
+            );
+        } catch (error) {
+            Logger.error(
+                `${this.moduleName}: Error creating cache folder`,
+                error
+            );
+        }
     }
 
+    /**
+     * Saves the given object bytes to the cache folder. The file is written
+     * through the Obsidian Vault binary API (createBinary / modifyBinary) so
+     * it is registered in the vault index and resolvable on desktop and
+     * mobile alike. The object bytes are buffered first because the Vault API
+     * cannot write streams.
+     *
+     * @param objectKey the object key
+     * @param versionToken the version token
+     * @param data the object content
+     */
     public async saveFileToCacheFolder(
         objectKey: string,
         versionToken: string,
-        stream: Readable
+        data: Uint8Array
     ): Promise<TFile | void> {
-        const fileName = getCacheFileName(objectKey, versionToken);
-        const objectPath = `${this.getCachePath()}\\${fileName}`;
+        const fileName = await getCacheFileName(objectKey, versionToken);
+        const relativePath = `${Config.CACHE_FOLDER}/${fileName}`;
 
         Logger.info(
-            `${this.moduleName}: Saving object to cache folder: ${objectPath}`
+            `${this.moduleName}: Saving object to cache folder: ${relativePath}`
         );
 
-        if (await app.vault.adapter.exists(objectPath)) {
+        if (await app.vault.adapter.exists(relativePath)) {
             Logger.debug(
                 `${this.moduleName}: File already exists in cache, returning existing file`
             );
-            return app.vault.getAbstractFileByPath(objectPath) as TFile;
+            return app.vault.getAbstractFileByPath(relativePath) as TFile;
         }
 
-        return new Promise((resolve, reject) => {
-            const writeStream = createWriteStream(objectPath);
+        try {
+            await app.vault.createBinary(relativePath, data);
+        } catch (error) {
+            // createBinary fails when the file was created concurrently; fall
+            // back to overwriting the existing file through the vault.
+            Logger.debug(
+                `${this.moduleName}: createBinary failed, falling back to modifying the existing file`,
+                error
+            );
+            const existingFile = app.vault.getAbstractFileByPath(
+                relativePath
+            ) as TFile | null;
 
-            this.addOpenStream(writeStream);
+            if (existingFile) {
+                await app.vault.modifyBinary(existingFile, data);
+            } else {
+                throw error;
+            }
+        }
 
-            writeStream.on("finish", async () => {
-                this.removeOpenStream(writeStream);
-
-                // Raw fs writes are not tracked by the vault index, so verify
-                // the file landed on disk, log its size and the leading bytes.
-                // The header identifies the real content (e.g. "ffd8ff..." for
-                // a JPEG) and reveals whether a download returned an error page
-                // instead of the actual object.
-                const stat = await fs.promises
-                    .stat(objectPath)
-                    .catch(() => null);
-
-                let header = "";
-                if (stat && stat.size > 0) {
-                    const handle = await fs.promises
-                        .open(objectPath, "r")
-                        .catch(() => null);
-
-                    if (handle) {
-                        const buffer = Buffer.alloc(16);
-                        await handle
-                            .read(buffer, 0, 16, 0)
-                            .catch(() => null);
-                        await handle.close().catch(() => null);
-                        header = buffer
-                            .subarray(0, Math.min(stat.size, 16))
-                            .toString("hex");
-                    }
-                }
-
-                Logger.debug(
-                    `${this.moduleName}: Saved ${fileName} to cache folder (${
-                        stat ? stat.size : 0
-                    } bytes, header: ${header || "n/a"})`
-                );
-
-                resolve();
-            });
-            writeStream.on("error", () => {
-                this.removeOpenStream(writeStream);
-                reject();
-            });
-            stream.on("error", () => {
-                this.removeOpenStream(writeStream);
-                reject();
-            });
-            stream.pipe(writeStream);
-        });
-    }
-
-    private addOpenStream(stream: fs.WriteStream) {
-        this.openStreams.push(stream);
-    }
-
-    private removeOpenStream(stream: fs.WriteStream) {
-        this.openStreams = this.openStreams.filter((s) => s !== stream);
-    }
-
-    public async closeAllOpenStreams() {
         Logger.debug(
-            `${this.moduleName}: Closing all open streams: ${this.openStreams.length}`
+            `${this.moduleName}: Saved ${fileName} to cache folder (${data.length} bytes)`
         );
 
-        this.openStreams.forEach((stream) => {
-            stream.destroy();
-        });
-
-        this.openStreams = [];
+        return app.vault.getAbstractFileByPath(relativePath) as TFile;
     }
 
     /**
@@ -373,40 +328,31 @@ export default class Cache {
      *
      * @returns true if the file exists in the cache folder, false otherwise
      */
-    public isFileInCacheFolder(s3Link: S3Link): boolean {
-        const fileName = getCacheFileName(
+    public async isFileInCacheFolder(s3Link: S3Link): Promise<boolean> {
+        const filePath = await getCacheRelativePath(
             s3Link.objectKey,
             s3Link.versionToken
         );
-        const filePath = `${this.getCachePath()}\\${fileName}`;
+
+        const file = app.vault.getAbstractFileByPath(filePath) as TFile | null;
+
+        if (file) {
+            // treat empty files as missing so they get re-downloaded
+            return file.stat.size > 0;
+        }
 
         try {
-            // treat empty files as missing so they get re-downloaded
-            return fs.statSync(filePath).size > 0;
+            return await app.vault.adapter.exists(filePath);
         } catch {
             return false;
         }
     }
 
     /**
-     * Retrieves the path to the cache folder
-     *
-     * @returns the path to the cache folder
-     */
-    public getCachePath(): string {
-        const basePath = (app.vault.adapter as FileSystemAdapter).getBasePath();
-        const cachePath = `${basePath}\\${Config.CACHE_FOLDER}`;
-
-        Logger.debug(`${this.moduleName}: Cachepath ${cachePath}`);
-
-        return cachePath;
-    }
-
-    /**
      * Clears all files from the cache folder and all items from localStorage that are related to the plugin.
      */
     public async clearCache() {
-        this.clearCacheFolder();
+        await this.clearCacheFolder();
         this.clearLocalStorage();
     }
 
@@ -418,27 +364,20 @@ export default class Cache {
             `${this.moduleName}::clearCacheFolder - Clearing cache folder`
         );
 
-        const cachePath = this.getCachePath();
+        try {
+            const listing = await app.vault.adapter.list(Config.CACHE_FOLDER);
 
-        if (!fs.existsSync(cachePath)) {
-            Logger.error(
-                `${this.moduleName}: Cache folder does not exist, aborting...`
-            );
-            return;
-        }
-
-        const files = fs.readdirSync(cachePath);
-
-        for (const file of files) {
-            const filePath = path.join(cachePath, file);
-            const stat = await fs.promises.stat(filePath);
-
-            if (stat.isFile()) {
-                await fs.promises.unlink(filePath);
+            for (const filePath of listing.files) {
+                await app.vault.adapter.remove(filePath);
                 Logger.debug(
                     `${this.moduleName}: Deleted file: ${filePath} from cache folder`
                 );
             }
+        } catch (error) {
+            Logger.error(
+                `${this.moduleName}: Cache folder does not exist, aborting...`,
+                error
+            );
         }
     }
 
@@ -471,8 +410,11 @@ export default class Cache {
      * @param sourceId the storage source id
      * @param objectKey
      */
-    public removeItemFromCache(sourceId: string, objectKey: string) {
-        this.removeItemFromCacheFolder(sourceId, objectKey);
+    public async removeItemFromCache(
+        sourceId: string,
+        objectKey: string
+    ): Promise<void> {
+        await this.removeItemFromCacheFolder(sourceId, objectKey);
         this.removeItemFromLocalStorage(sourceId, objectKey);
     }
 
@@ -483,7 +425,10 @@ export default class Cache {
      * @param objectKey
      * @returns
      */
-    private removeItemFromCacheFolder(sourceId: string, objectKey: string) {
+    private async removeItemFromCacheFolder(
+        sourceId: string,
+        objectKey: string
+    ) {
         Logger.debug(
             `${this.moduleName}::removeItemFromCacheFolder - Removing ${objectKey} from cache folder`
         );
@@ -497,17 +442,19 @@ export default class Cache {
             return;
         }
 
-        const fileName = getCacheFileName(objectKey, s3Link.versionToken);
-        const filePath = `${this.getCachePath()}\\${fileName}`;
+        const filePath = await getCacheRelativePath(
+            objectKey,
+            s3Link.versionToken
+        );
 
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+        if (await app.vault.adapter.exists(filePath)) {
+            await app.vault.adapter.remove(filePath);
             Logger.debug(
-                `${this.moduleName}: Deleted file ${fileName} from cache folder`
+                `${this.moduleName}: Deleted file ${filePath} from cache folder`
             );
         } else {
             Logger.debug(
-                `${this.moduleName}: No file found for ${fileName} - nothing to delete`
+                `${this.moduleName}: No file found for ${filePath} - nothing to delete`
             );
         }
     }

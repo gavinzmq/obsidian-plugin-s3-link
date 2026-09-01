@@ -4,7 +4,7 @@
 
 ## 概览
 
-Obsidian 插件（当前仅桌面端，移动端兼容规划中），用于在笔记中引用对象存储文件：`s3:[objectKey]` 下载并缓存到本地，`s3-sign:[objectKey]` 生成预签名 URL。支持 AWS S3、腾讯云 COS、阿里云 OSS 及 S3 兼容端点；Provider 下拉、端点自动组合、测试连接、中/英文界面、日志级别设置、自动替换远程链接。
+Obsidian 插件（桌面端 + 移动端，移动端兼容已实现、待真机验证），用于在笔记中引用对象存储文件：`s3:[objectKey]` 下载并缓存到本地，`s3-sign:[objectKey]` 生成预签名 URL。支持 AWS S3、腾讯云 COS、阿里云 OSS 及 S3 兼容端点；Provider 下拉、端点自动组合、测试连接、中/英文界面、日志级别设置、自动替换远程链接。
 
 ## 位置
 
@@ -16,8 +16,9 @@ Obsidian 插件（当前仅桌面端，移动端兼容规划中），用于在�
 - 入口：`S3LinkPlugin`（`src/main.ts`，含设置迁移、语言设置、日志级别应用、vault 监听/自动替换）
 - 自动替换：`src/autoReplace.ts`（`https://` → `s3:` 链接，围栏感知）
 - 编排核心：`S3PostProcessor`（`src/s3PostProcessor.ts`，多源解析）
-- 缓存：`Cache`（`src/cache.ts`，versionToken + sha1 文件名 + sourceId 键）
-- 网络：`StorageClient` 接口（含 `testConnection`）+ 3 适配器 + `StorageClientFactory`（`src/network/`）
+- 缓存：`Cache`（`src/cache.ts`，versionToken + sha1 文件名 + sourceId 键；Vault 二进制写盘）
+- 网络：`StorageClient` 接口（含 `testConnection`）+ 3 适配器 + `StorageClientFactory` + `sigV4` / `ossSigner`（`src/network/`）
+- 平台工具：`src/platformUtil.ts`（Web Crypto 哈希/HMAC、Base64、路径、字节流收集）
 - 日志：`src/logger.ts`（`Logger` + `LogLevel`，默认 INFO）
 - 国际化：`src/i18n.ts`（en/zh）
 - 设置 UI：`src/settings/settingsTab.ts`（语言 / 日志级别 / 自动替换开关 / Provider 下拉 / 端点自动组合 / 测试连接）
@@ -42,8 +43,17 @@ Obsidian 插件（当前仅桌面端，移动端兼容规划中），用于在�
 - 日志级别设置（`Logger` / `LogLevel`，v1.0.9）：全部插件日志统一过滤，默认 INFO。
 - `net::ERR_UNKNOWN_URL_SCHEME` 修复（v1.0.10）：`Config.S3_LINK_PLACEHOLDER`（透明 GIF data URI）；`ImageResolver` 同步替换 `img.src`、`VideoResolver` 同步 `removeAttribute("src")`，避免渲染器加载未注册的 `s3:` scheme；span/anchor 无需处理。
 
+### 2026-09-01 — 移动端兼容改造（未发布）
+
+- 移除全部 Node 内置依赖（`fs`/`path`/`stream`/`crypto`），`manifest.json` 移除 `isDesktopOnly`。
+- 缓存改走 Vault 二进制 API（`createBinary`/`modifyBinary`），全部路径为 vault 相对路径；下载整对象缓冲。
+- 网络层：`@aws-sdk/*` 与 `ali-oss` 移除，S3 / S3 兼容与 OSS 改用原生 `fetch` + Web Crypto 手写签名（`sigV4.ts`、`ossSigner.ts`）；COS 保留浏览器 SDK `cos-js-sdk-v5`。
+- 签名已与官方 `@smithy/signature-v4` 逐字节对照验证；构建产物 2.8MB → 约 0.57MB；jest 11 套件 / 81 用例。
+- 待真机验证：真实桶端到端、移动端 iOS/Android 渲染。
+
 ## 相关文档
 
 - `../architecture.md` — 完整架构文档（含流程图与已知局限）
 - `../decisions/2026-08-27-multi-cloud-storage-support.md` — 多存储支持决策（已实现，含 §7 UI 修订）
 - `../decisions/2026-09-01-s3-link-placeholder.md` — s3: 链接占位符修复决策（已实现）
+- `../decisions/2026-09-01-mobile-support.md` — 移动端兼容决策（已实现，待真机验证）

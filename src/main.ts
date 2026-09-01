@@ -45,10 +45,10 @@ export default class S3LinkPlugin extends Plugin {
         this.addSettingTab(new PluginSettingsTab(this.app, this));
 
         this.cache = await new Cache();
-        this.cache.init();
+        await this.cache.init();
 
         // cleanup unfinished downloads
-        DownloadManager.getInstance().cleanUnfinishedDownloads();
+        await DownloadManager.getInstance().cleanUnfinishedDownloads();
 
         this.setupMarkdownPostProcessor(this.cache);
         this.addPluginCommands(this);
@@ -63,8 +63,6 @@ export default class S3LinkPlugin extends Plugin {
 
     async onunload() {
         Logger.info(`${this.moduleName}::onunload - Unloading plugin`);
-
-        this.cache.closeAllOpenStreams();
     }
 
     async loadSettings() {

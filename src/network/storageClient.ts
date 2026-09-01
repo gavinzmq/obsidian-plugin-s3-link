@@ -1,5 +1,3 @@
-import { Readable } from "stream";
-
 /**
  * Unified storage client interface implemented by all provider adapters
  * (AWS S3, Tencent Cloud COS, Aliyun OSS and arbitrary S3-compatible stores).
@@ -15,13 +13,15 @@ export interface StorageClient {
     getVersionToken(objectKey: string): Promise<string | undefined>;
 
     /**
-     * Streams the object content from the remote storage. The download is
-     * registered with the DownloadManager.
+     * Downloads the object content from the remote storage and returns it as
+     * raw bytes. The download is registered with the DownloadManager. The
+     * whole object is buffered because the Vault binary API (used to persist
+     * the cache) cannot write streams.
      *
      * @param objectKey the object key
      * @param versionToken the version token of the object to download
      */
-    getObject(objectKey: string, versionToken: string): Promise<Readable>;
+    getObject(objectKey: string, versionToken: string): Promise<Uint8Array>;
 
     /**
      * Creates a signed URL for the given object.

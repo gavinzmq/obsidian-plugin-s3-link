@@ -37,9 +37,6 @@
         "typescript": "4.7.4"
     },
     "dependencies": {
-        "@aws-sdk/client-s3": "^3.379.1",
-        "@aws-sdk/s3-request-presigner": "^3.379.1",
-        "ali-oss": "^6.20.0",
         "cos-js-sdk-v5": "^1.10.1"
     },
     "jest": {
@@ -47,6 +44,9 @@
             "^.+\\.tsx?$": "ts-jest"
         },
         "testEnvironment": "jest-environment-jsdom",
+        "setupFiles": [
+            "<rootDir>/test/mock/setup.ts"
+        ],
         "testRegex": "(/test/.*|(\\.|/)(test|spec))\\.tsx?$",
         "testPathIgnorePatterns": [
             "/node_modules/",

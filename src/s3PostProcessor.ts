@@ -202,7 +202,7 @@ export class S3PostProcessor {
                     // a failed download or a cleared cache folder) would leave
                     // the image broken while localStorage still claims the item
                     // is cached.
-                    if (this.cache.isFileInCacheFolder(cachedS3Link)) {
+                    if (await this.cache.isFileInCacheFolder(cachedS3Link)) {
                         Logger.debug(
                             `${this.moduleName} - Cache not expired`
                         );
@@ -227,7 +227,7 @@ export class S3PostProcessor {
                     Logger.warn(
                         `${this.moduleName} - Cached file for ${objectKey} is missing from the cache folder, re-downloading`
                     );
-                    this.cache.removeItemFromCache(sourceId, objectKey);
+                    await this.cache.removeItemFromCache(sourceId, objectKey);
                 }
 
                 // The item is not cached yet, or the cached file is gone:
@@ -364,17 +364,21 @@ export class S3PostProcessor {
                 htmlElement.src = resourcePath;
 
                 // If Obsidian's resource server cannot serve the cache file
-                // (e.g. it was written with raw streams and is not resolvable),
-                // fall back to a direct file:// URL that the renderer can
-                // always load from disk.
+                // (e.g. it was written outside the vault index and is not
+                // resolvable), fall back to a direct file:// URL on desktop or
+                // the vault resource path on mobile.
                 if (resource instanceof S3Link) {
                     htmlElement.addEventListener(
                         "error",
                         () => {
-                            htmlElement.src = getCacheFileUrl(
+                            getCacheFileUrl(
                                 resource.objectKey,
                                 resource.versionToken
-                            );
+                            ).then((fallbackUrl) => {
+                                if (fallbackUrl) {
+                                    htmlElement.src = fallbackUrl;
+                                }
+                            });
                         },
                         { once: true }
                     );
@@ -392,10 +396,14 @@ export class S3PostProcessor {
                     htmlElement.addEventListener(
                         "error",
                         () => {
-                            htmlElement.src = getCacheFileUrl(
+                            getCacheFileUrl(
                                 resource.objectKey,
                                 resource.versionToken
-                            );
+                            ).then((fallbackUrl) => {
+                                if (fallbackUrl) {
+                                    htmlElement.src = fallbackUrl;
+                                }
+                            });
                         },
                         { once: true }
                     );
@@ -403,10 +411,10 @@ export class S3PostProcessor {
             } else if (htmlElement instanceof HTMLSpanElement) {
                 htmlElement.setAttribute(
                     "src",
-                    getCacheFileName(objectKey, versionToken)
+                    await getCacheFileName(objectKey, versionToken)
                 );
             } else if (htmlElement instanceof HTMLAnchorElement) {
-                htmlElement.href = `${Config.OBSIDIAN_APP_LINK_PREFIX}${getCacheFileName(
+                htmlElement.href = `${Config.OBSIDIAN_APP_LINK_PREFIX}${await getCacheFileName(
                     objectKey,
                     versionToken
                 )}`;
@@ -528,11 +536,11 @@ export class S3PostProcessor {
         objectKey: string,
         versionToken: string
     ): Promise<TFile | S3Link> {
-        const stream = await client.getObject(objectKey, versionToken);
+        const data = await client.getObject(objectKey, versionToken);
         const savedFile = await this.cache.saveFileToCacheFolder(
             objectKey,
             versionToken,
-            stream
+            data
         );
 
         if (savedFile instanceof TFile) {

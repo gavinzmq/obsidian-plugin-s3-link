@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-01 — 移动端兼容改造（未发布）
+
+- 移除全部 Node 内置依赖（`fs`/`path`/`stream`/`crypto`），`manifest.json` 移除 `isDesktopOnly`
+- 缓存改走 Obsidian Vault 二进制 API（`createBinary`/`modifyBinary`），全部路径为 vault 相对路径；下载内容整对象缓冲
+- 网络层：移除 `@aws-sdk/client-s3`、`@aws-sdk/s3-request-presigner`、`ali-oss` 依赖；S3 / S3 兼容与阿里云 OSS 改用原生 `fetch` + Web Crypto 手写签名（`sigV4.ts`、`ossSigner.ts`）；COS 保留浏览器 SDK `cos-js-sdk-v5`
+- 签名已与官方 `@smithy/signature-v4` 逐字节对照验证；构建产物约 2.8MB → 0.57MB
+- 新增 platformUtil / sigV4 / ossSigner 测试；jest 11 套件 81 用例通过
+- 待真机验证：真实桶端到端、移动端 iOS/Android 渲染
+
 ## 2026-09-01 — 版本号 1.0.10
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.0.10`

@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Readable } from "stream";
 import Config from "../config";
 import { StorageSource } from "../settings/settings";
 import DownloadManager from "./downloadManager";
@@ -55,7 +54,7 @@ export class TencentCosClient implements StorageClient {
     public getObject(
         objectKey: string,
         versionToken: string
-    ): Promise<Readable> {
+    ): Promise<Uint8Array> {
         const downloadManager = DownloadManager.getInstance();
         downloadManager.addNewDownload(this.sourceId, objectKey, versionToken);
 
@@ -71,9 +70,9 @@ export class TencentCosClient implements StorageClient {
                     // Request a Blob so image data is preserved byte-for-byte.
                     DataType: "blob",
                 },
-                (err: unknown, data: any) => {
+                async (err: unknown, data: any) => {
                     if (err) {
-                        downloadManager.setErrorState(
+                        await downloadManager.setErrorState(
                             this.sourceId,
                             objectKey,
                             versionToken
@@ -86,39 +85,27 @@ export class TencentCosClient implements StorageClient {
                         return;
                     }
 
-                    downloadManager.setRunningState(
-                        this.sourceId,
-                        objectKey,
-                        versionToken
-                    );
-
-                    this.bodyToReadable(data.Body)
-                        .then((stream) => {
-                            stream.on("end", () => {
-                                downloadManager.setCompletedState(
-                                    this.sourceId,
-                                    objectKey,
-                                    versionToken
-                                );
-                            });
-                            stream.on("error", () => {
-                                downloadManager.setErrorState(
-                                    this.sourceId,
-                                    objectKey,
-                                    versionToken
-                                );
-                            });
-
-                            resolve(stream);
-                        })
-                        .catch((conversionError) => {
-                            downloadManager.setErrorState(
-                                this.sourceId,
-                                objectKey,
-                                versionToken
-                            );
-                            reject(conversionError);
-                        });
+                    try {
+                        const bytes = await this.bodyToUint8Array(data.Body);
+                        downloadManager.setRunningState(
+                            this.sourceId,
+                            objectKey,
+                            versionToken
+                        );
+                        downloadManager.setCompletedState(
+                            this.sourceId,
+                            objectKey,
+                            versionToken
+                        );
+                        resolve(bytes);
+                    } catch (conversionError) {
+                        await downloadManager.setErrorState(
+                            this.sourceId,
+                            objectKey,
+                            versionToken
+                        );
+                        reject(conversionError);
+                    }
                 }
             );
         });
@@ -171,26 +158,30 @@ export class TencentCosClient implements StorageClient {
     }
 
     /**
-     * Converts the response body returned by the browser SDK into a Node
-     * Readable so it can be piped into the local cache file.
+     * Converts the response body returned by the browser SDK into raw bytes.
      * Note: the browser SDK buffers the whole object, so large files are not
      * streamed incrementally for Tencent COS.
      */
-    private async bodyToReadable(body: unknown): Promise<Readable> {
-        if (body instanceof ArrayBuffer) {
-            return Readable.from([Buffer.from(body)]);
+    private async bodyToUint8Array(body: unknown): Promise<Uint8Array> {
+        if (body instanceof Blob) {
+            return new Uint8Array(await body.arrayBuffer());
         }
 
-        if (body instanceof Blob) {
-            const buffer = Buffer.from(await body.arrayBuffer());
-            return Readable.from([buffer]);
+        if (body instanceof ArrayBuffer) {
+            return new Uint8Array(body);
         }
 
         if (typeof body === "string") {
-            return Readable.from([Buffer.from(body)]);
+            return new TextEncoder().encode(body);
         }
 
-        return Readable.from([Buffer.from(body as ArrayBuffer)]);
+        if (ArrayBuffer.isView(body)) {
+            return new Uint8Array(
+                body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength)
+            );
+        }
+
+        return new Uint8Array(body as ArrayBuffer);
     }
 
     private extractETag(etag: string | undefined): string | undefined {

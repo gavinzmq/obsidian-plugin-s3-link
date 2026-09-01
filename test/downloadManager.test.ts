@@ -64,14 +64,14 @@ describe("DownloadManager", () => {
         expect(record.downloadState).toBe(DownloadState.RUNNING);
     });
 
-    it("should update a download record to FAILED state and remove from cache", () => {
+    it("should update a download record to FAILED state and remove from cache", async () => {
         const downloadManager = DownloadManager.getInstance();
         downloadManager.addNewDownload(
             mockSourceId,
             "testObject",
             "testVersion"
         );
-        downloadManager.setErrorState(
+        await downloadManager.setErrorState(
             mockSourceId,
             "testObject",
             "testVersion"
@@ -108,7 +108,7 @@ describe("DownloadManager", () => {
         expect(record.downloadState).toBe(DownloadState.COMPLETED);
     });
 
-    it("should ignore setErrorState after the download completed", () => {
+    it("should ignore setErrorState after the download completed", async () => {
         const downloadManager = DownloadManager.getInstance();
         downloadManager.addNewDownload(
             mockSourceId,
@@ -123,7 +123,7 @@ describe("DownloadManager", () => {
 
         // A trailing stream error after completion must not flip the record to
         // FAILED (which would delete a valid cached file).
-        downloadManager.setErrorState(
+        await downloadManager.setErrorState(
             mockSourceId,
             "testObject",
             "testVersion"

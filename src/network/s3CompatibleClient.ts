@@ -1,95 +1,118 @@
-import {
-    S3Client,
-    GetObjectCommand,
-    ListObjectVersionsCommand,
-    ListObjectsV2Command,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { Readable } from "stream";
 import Config from "../config";
 import { StorageSource } from "../settings/settings";
 import DownloadManager from "./downloadManager";
 import { Logger } from "../logger";
 import { StorageClient } from "./storageClient";
+import { encodeS3PathKey, presignGetV4, signRequestV4 } from "./sigV4";
+import { sha256Hex } from "../platformUtil";
 
 /**
  * Adapter for AWS S3 and any S3-compatible endpoint (MinIO, custom
- * S3-compatible providers) built on the AWS SDK v3. When an endpoint is
- * configured the client uses path-style addressing.
+ * S3-compatible providers). Instead of the Node-based AWS SDK it uses the
+ * native `fetch` API together with a SigV4 implementation built on the Web
+ * Crypto API, so it also runs in the Obsidian mobile WebView.
+ *
+ * When an endpoint is configured the client uses path-style addressing unless
+ * `pathStyle` is disabled; AWS endpoints default to virtual-host addressing.
  */
 export class S3CompatibleClient implements StorageClient {
     private readonly moduleName = "S3CompatibleClient";
-    private s3Client: S3Client;
     private sourceId: string;
     private bucketName: string;
+    private region: string;
+    private accessKeyId: string;
+    private secretAccessKey: string;
+    private host: string;
+    private usePathStyle: boolean;
 
     constructor(source: StorageSource) {
         this.sourceId = source.id;
         this.bucketName = source.bucketName;
-
-        const clientConfig: {
-            region: string;
-            credentials: {
-                accessKeyId: string;
-                secretAccessKey: string;
-            };
-            endpoint?: string;
-            forcePathStyle?: boolean;
-        } = {
-            region: source.region || "us-east-1",
-            credentials: {
-                accessKeyId: source.accessKeyId,
-                secretAccessKey: source.secretAccessKey,
-            },
-        };
+        this.region = source.region || "us-east-1";
+        this.accessKeyId = source.accessKeyId;
+        this.secretAccessKey = source.secretAccessKey;
 
         if (source.endpoint) {
-            clientConfig.endpoint = source.endpoint;
-            clientConfig.forcePathStyle = source.pathStyle;
+            const url = new URL(source.endpoint);
+            this.host = url.host;
+            this.usePathStyle = source.pathStyle;
+        } else {
+            this.host = `s3.${this.region}.amazonaws.com`;
+            this.usePathStyle = false;
+        }
+    }
+
+    /**
+     * Builds the object request target (host + encoded path) honouring
+     * path-style vs. virtual-host addressing.
+     */
+    private buildObjectTarget(objectKey: string): {
+        url: string;
+        host: string;
+        path: string;
+    } {
+        const encodedKey = encodeS3PathKey(objectKey);
+
+        if (this.usePathStyle) {
+            const path = `/${encodeS3PathKey(this.bucketName)}/${encodedKey}`;
+            return { url: `https://${this.host}${path}`, host: this.host, path };
         }
 
-        this.s3Client = new S3Client(clientConfig);
+        const path = `/${encodedKey}`;
+        const host = `${this.bucketName}.${this.host}`;
+        return { url: `https://${host}${path}`, host, path };
     }
 
     public async getVersionToken(
         objectKey: string
     ): Promise<string | undefined> {
+        const { url, host, path } = this.buildObjectTarget(objectKey);
+
         try {
-            const command = new ListObjectVersionsCommand({
-                Bucket: this.bucketName,
-                Prefix: objectKey,
+            const headers = await signRequestV4({
+                region: this.region,
+                accessKeyId: this.accessKeyId,
+                secretAccessKey: this.secretAccessKey,
+                method: "HEAD",
+                host,
+                path,
+                payloadHash: await sha256Hex(""),
             });
-            const response = await this.s3Client.send(command);
 
-            const exactFilteredVersion =
-                response.Versions?.filter(
-                    (version) => version.Key === objectKey
-                ) || [];
+            const response = await fetch(url, { method: "HEAD", headers });
 
-            if (exactFilteredVersion.length > 0) {
-                const versionId = exactFilteredVersion[0].VersionId;
-                Logger.debug(
-                    `${this.moduleName}: Retrieved versionId ${versionId} for object ${objectKey}`
-                );
-
-                return versionId;
+            if (response.status === 404) {
+                return undefined;
             }
-        } catch (error) {
-            Logger.error(
-                `${this.moduleName}: Failed to retrieve object versionId`,
-                error
+
+            if (!response.ok) {
+                throw new Error(
+                    `HEAD ${objectKey} failed with status ${response.status}`
+                );
+            }
+
+            const versionId = response.headers.get("x-amz-version-id");
+            const etag = response.headers.get("etag");
+            const token = (versionId || etag || "").replace(/"/g, "");
+
+            Logger.debug(
+                `${this.moduleName}: Retrieved version token for ${objectKey}: ${token}`
             );
 
+            return token || undefined;
+        } catch (error) {
+            Logger.error(
+                `${this.moduleName}: Failed to retrieve object version token`,
+                error
+            );
             throw error;
         }
-
-        return undefined;
     }
 
     public async getObject(
         objectKey: string,
         versionToken: string
-    ): Promise<Readable> {
+    ): Promise<Uint8Array> {
         const downloadManager = DownloadManager.getInstance();
 
         try {
@@ -99,39 +122,43 @@ export class S3CompatibleClient implements StorageClient {
                 versionToken
             );
 
-            const command = new GetObjectCommand({
-                Bucket: this.bucketName,
-                Key: objectKey,
+            const { url, host, path } = this.buildObjectTarget(objectKey);
+            const headers = await signRequestV4({
+                region: this.region,
+                accessKeyId: this.accessKeyId,
+                secretAccessKey: this.secretAccessKey,
+                method: "GET",
+                host,
+                path,
+                payloadHash: await sha256Hex(""),
             });
-            const response = await this.s3Client.send(command);
 
-            if (response.Body) {
-                downloadManager.setRunningState(
-                    this.sourceId,
-                    objectKey,
-                    versionToken
+            const response = await fetch(url, { method: "GET", headers });
+
+            if (!response.ok) {
+                throw new Error(
+                    `Failed to retrieve object ${objectKey}: status ${response.status}`
                 );
-
-                const stream = this.browserStreamToReadable(
-                    response.Body as ReadableStream
-                );
-
-                stream.on("end", () => {
-                    downloadManager.setCompletedState(
-                        this.sourceId,
-                        objectKey,
-                        versionToken
-                    );
-                });
-
-                return stream;
             }
 
-            throw new Error(
-                `Failed to retrieve object ${objectKey} from S3`
+            downloadManager.setRunningState(
+                this.sourceId,
+                objectKey,
+                versionToken
             );
+
+            const buffer = await response.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+
+            downloadManager.setCompletedState(
+                this.sourceId,
+                objectKey,
+                versionToken
+            );
+
+            return bytes;
         } catch (error) {
-            downloadManager.setErrorState(
+            await downloadManager.setErrorState(
                 this.sourceId,
                 objectKey,
                 versionToken
@@ -142,36 +169,48 @@ export class S3CompatibleClient implements StorageClient {
     }
 
     public async getSignedUrl(objectKey: string): Promise<string> {
-        const command = new GetObjectCommand({
-            Bucket: this.bucketName,
-            Key: objectKey,
-        });
+        const { host, path } = this.buildObjectTarget(objectKey);
 
-        return getSignedUrl(this.s3Client, command, {
+        return presignGetV4({
+            region: this.region,
+            accessKeyId: this.accessKeyId,
+            secretAccessKey: this.secretAccessKey,
+            host,
+            path,
             expiresIn: Config.S3_SIGNED_LINK_EXPIRATION_TIME_SECONDS,
         });
     }
 
     public async testConnection(): Promise<void> {
-        const command = new ListObjectsV2Command({
-            Bucket: this.bucketName,
-            MaxKeys: 1,
+        const path = this.usePathStyle
+            ? `/${encodeS3PathKey(this.bucketName)}`
+            : "/";
+        const host = this.usePathStyle
+            ? this.host
+            : `${this.bucketName}.${this.host}`;
+        const query = { "list-type": "2", "max-keys": "1" };
+
+        const headers = await signRequestV4({
+            region: this.region,
+            accessKeyId: this.accessKeyId,
+            secretAccessKey: this.secretAccessKey,
+            method: "GET",
+            host,
+            path,
+            query,
+            payloadHash: await sha256Hex(""),
         });
 
-        await this.s3Client.send(command);
-    }
+        const response = await fetch(
+            `https://${host}${path}?list-type=2&max-keys=1`,
+            { method: "GET", headers }
+        );
 
-    private browserStreamToReadable(browserStream: ReadableStream): Readable {
-        const reader = browserStream.getReader();
-        return new Readable({
-            async read() {
-                const result = await reader.read();
-                if (result.done) {
-                    this.push(null);
-                } else {
-                    this.push(Buffer.from(result.value));
-                }
-            },
-        });
+        if (!response.ok) {
+            throw new Error(
+                `Connection test failed with status ${response.status}`
+            );
+        }
     }
 }
+

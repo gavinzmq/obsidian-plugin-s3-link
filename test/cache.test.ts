@@ -1,9 +1,7 @@
-import * as fs from "fs";
 import Cache from "../src/cache";
 import Config from "../src/config";
 import S3Link from "../src/model/s3Link";
 import S3SignedLink from "../src/model/s3SignedLink";
-import { getCacheFileName } from "../src/obsidianHelper";
 import { localStorageMock } from "./mock/localStorageMock";
 
 describe("Cache", () => {
@@ -121,12 +119,19 @@ describe("Cache", () => {
     });
 
     describe("isFileInCacheFolder", () => {
+        interface AppMock {
+            vault: {
+                getAbstractFileByPath: () => unknown;
+                adapter: { exists: () => Promise<boolean> };
+            };
+        }
+
         beforeEach(() => {
-            // minimal app mock so getCachePath() resolves a base path
             (global as { app?: unknown }).app = {
                 vault: {
+                    getAbstractFileByPath: () => null,
                     adapter: {
-                        getBasePath: () => "/mock/vault",
+                        exists: async () => true,
                     },
                 },
             };
@@ -137,7 +142,7 @@ describe("Cache", () => {
             jest.restoreAllMocks();
         });
 
-        it("should return true when the cached file exists in the cache folder", () => {
+        it("should return true when the cached file exists in the cache folder", async () => {
             const mockObjectKey = "test.jpg";
             const mockS3Link = new S3Link(
                 mockObjectKey,
@@ -145,21 +150,13 @@ describe("Cache", () => {
                 "version123",
                 mockSourceId
             );
-            const fileName = getCacheFileName(mockObjectKey, "version123");
 
-            const statSyncSpy = jest
-                .spyOn(fs, "statSync")
-                .mockReturnValue({ size: 1024 } as fs.Stats);
-
-            const result = cache.isFileInCacheFolder(mockS3Link);
+            const result = await cache.isFileInCacheFolder(mockS3Link);
 
             expect(result).toBe(true);
-            expect(statSyncSpy).toHaveBeenCalledWith(
-                expect.stringContaining(fileName)
-            );
         });
 
-        it("should return false when the cached file is missing from the cache folder", () => {
+        it("should return false when the cached file is missing from the cache folder", async () => {
             const mockObjectKey = "test.jpg";
             const mockS3Link = new S3Link(
                 mockObjectKey,
@@ -168,16 +165,15 @@ describe("Cache", () => {
                 mockSourceId
             );
 
-            jest.spyOn(fs, "statSync").mockImplementation(() => {
-                throw new Error("ENOENT: no such file");
-            });
+            const app = (global as { app: unknown }).app as unknown as AppMock;
+            app.vault.adapter.exists = async () => false;
 
-            const result = cache.isFileInCacheFolder(mockS3Link);
+            const result = await cache.isFileInCacheFolder(mockS3Link);
 
             expect(result).toBe(false);
         });
 
-        it("should return false when the cached file is empty", () => {
+        it("should return false when the cached file is empty", async () => {
             const mockObjectKey = "test.jpg";
             const mockS3Link = new S3Link(
                 mockObjectKey,
@@ -186,9 +182,11 @@ describe("Cache", () => {
                 mockSourceId
             );
 
-            jest.spyOn(fs, "statSync").mockReturnValue({ size: 0 } as fs.Stats);
+            // an indexed file with size 0 is treated as missing
+            const app = (global as { app: unknown }).app as unknown as AppMock;
+            app.vault.getAbstractFileByPath = () => ({ stat: { size: 0 } });
 
-            const result = cache.isFileInCacheFolder(mockS3Link);
+            const result = await cache.isFileInCacheFolder(mockS3Link);
 
             expect(result).toBe(false);
         });

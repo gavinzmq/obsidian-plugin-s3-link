@@ -61,7 +61,7 @@ export default class DownloadManager {
         );
     }
 
-    public setErrorState(
+    public async setErrorState(
         sourceId: string,
         objectKey: string,
         versionToken: string
@@ -86,7 +86,7 @@ export default class DownloadManager {
             versionToken,
             downloadRecord
         );
-        this.cache.removeItemFromCache(sourceId, objectKey);
+        await this.cache.removeItemFromCache(sourceId, objectKey);
     }
 
     public setCompletedState(
@@ -109,10 +109,10 @@ export default class DownloadManager {
         );
     }
 
-    public cleanUnfinishedDownloads() {
+    public async cleanUnfinishedDownloads() {
         const localStorageItems = Object.keys(window.localStorage);
 
-        localStorageItems.forEach((key) => {
+        for (const key of localStorageItems) {
             if (
                 key.startsWith(
                     `${Config.PLUGIN_NAME}-${Config.MANAGER_PREFIX}/`
@@ -126,14 +126,14 @@ export default class DownloadManager {
                     Logger.info(
                         `${this.moduleName} - Cleaning unfinished download for ${downloadRecord.objectKey}`
                     );
-                    this.cache.removeItemFromCache(
+                    await this.cache.removeItemFromCache(
                         downloadRecord.sourceId,
                         downloadRecord.objectKey
                     );
                     window.localStorage.removeItem(key);
                 }
             }
-        });
+        }
     }
 
     private writeDownloadRecord(
