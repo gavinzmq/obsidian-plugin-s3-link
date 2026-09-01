@@ -30,7 +30,7 @@ const S3_IMAGE_LINK_REGEX =
  * image. The negative lookbehind keeps `![[...]]` embeds (handled by
  * S3_IMAGE_LINK_REGEX) out of this match.
  */
-const S3_WIKI_LINK_REGEX = /(?<!\!)\[\[(s3-sign:|s3:)[^\]]*\]\]/g;
+const S3_WIKI_LINK_REGEX = /(?<!!)\[\[(s3-sign:|s3:)[^\]]*\]\]/g;
 
 /**
  * File extensions that get a clickable image preview when referenced by a
