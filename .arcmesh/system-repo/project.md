@@ -38,7 +38,7 @@
 
 ## Status
 
-- 版本：1.0.10（`manifest.json`，已发布；移动端兼容改造未发布）
+- 版本：1.1.0（`manifest.json`，已发布，含移动端兼容改造与 CI 重构）
 - 架构文档：`architecture.md`（2026-09-01 随占位符修复、日志级别与移动端兼容更新）
 - 组件注册：`components/obsidian-plugin-s3-link.md`
 - 设计决策：`decisions/2026-08-27-multi-cloud-storage-support.md`（已实现，含 §7 UI 修订与 COS 浏览器 SDK 调整）、`decisions/2026-09-01-s3-link-placeholder.md`（已实现，`net::ERR_UNKNOWN_URL_SCHEME` 修复）、`decisions/2026-09-01-mobile-support.md`（已实现，待真机验证）

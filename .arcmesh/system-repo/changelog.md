@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.1.0（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.1.0`
+- 打标签 `v1.1.0` 并发布：移动端兼容改造（移除 Node 依赖 + 原生 fetch/Web Crypto 签名）与 CI 重构（合并 `ci.yaml`）随本版本发布
+
 ## 2026-09-01 — 移动端兼容改造（未发布）
 
 - 移除全部 Node 内置依赖（`fs`/`path`/`stream`/`crypto`），`manifest.json` 移除 `isDesktopOnly`
