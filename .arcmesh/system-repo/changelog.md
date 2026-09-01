@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-01 — 版本号 1.3.4（发布）
+
+- `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.4`
+- 打标签 `v1.3.4` 并发布：点击图片旁边空白不再消失 + 悬停按钮样式对齐 Obsidian 原生随本版本发布
+
+## 2026-09-01 — 点击图片旁空白不再消失 + 原生样式按钮（v1.3.4）
+
+- 现象：
+  - 点击图片左/右空白处图片消失——光标落在链接边界，旧“边界包含”判断（`matchStart <= selTo && matchEnd >= selFrom`）误判为“在链接内”，移除 widget；随后 Obsidian 接管：带 `|w` 显示占位+原生按钮，无 `|w` 全空
+  - 悬停按钮不是 Obsidian 原生样式
+- 修复：
+  - `src/editor/s3EditorExtension.ts`：`buildDecorations` 改为**严格内部**判断（`selFrom > matchStart && selTo < matchEnd`）+ 仅 collapsed —— 光标在链接边界（点图片本身/旁空白）或框选均保留图片；仅编辑按钮把光标放进链接中间才显示可编辑文本
+  - `src/editor/s3ImageWidget.ts`：悬停按钮对齐原生——lucide `Maximize2`（放大）/`PenLine`（编辑）图标、20px 半透明黑底圆角 + hover 加深
+- 验证：tsc 通过；jest 13 套件 / 104 用例通过
+
 ## 2026-09-01 — 版本号 1.3.3（发布）
 
 - `manifest.json` / `versions.json` / `package.json` 版本号更新为 `1.3.3`

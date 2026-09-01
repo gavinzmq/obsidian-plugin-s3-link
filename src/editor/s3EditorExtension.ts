@@ -282,12 +282,13 @@ class S3EditorPlugin {
             const matchEnd = matchStart + match[0].length;
 
             // Keep the raw markdown editable while the cursor is on the link.
-            // The check is boundary-inclusive and only applies to a collapsed
-            // cursor: clicking the "edit" action places the cursor inside the
-            // link, which must reveal the markdown for editing. A selection
-            // spanning the image (or a single click elsewhere) leaves the
-            // image visible.
-            if (isCollapsed && matchStart <= selTo && matchEnd >= selFrom) {
+            // The check is strict (cursor strictly INSIDE the link body, not at
+            // the edges) and only for a collapsed cursor: clicking the "edit"
+            // action places the cursor in the middle of the link, which must
+            // reveal the markdown for editing. A cursor at the link edges (e.g.
+            // clicking right next to the image), a selection spanning the
+            // image, or a single click elsewhere leaves the image visible.
+            if (isCollapsed && selFrom > matchStart && selTo < matchEnd) {
                 continue;
             }
 

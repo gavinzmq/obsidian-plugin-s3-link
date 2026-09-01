@@ -5,10 +5,12 @@ const MIN_WIDTH = 50;
 const MIN_HEIGHT = 50;
 const DEFAULT_MAX_HEIGHT = 400;
 
+// Lucide icons matching native Obsidian's image hover actions: an expand
+// (zoom) button and a pen (edit) button.
 const ZOOM_ICON_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>';
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>';
 const EDIT_ICON_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>';
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>';
 
 /**
  * Creates a small icon button used for the hover actions (zoom / edit).
@@ -25,20 +27,28 @@ function createActionButton(
     button.title = title;
     button.setAttribute("aria-label", title);
     button.style.cssText = [
-        "width:22px",
-        "height:22px",
+        "width:20px",
+        "height:20px",
         "display:flex",
         "align-items:center",
         "justify-content:center",
         "border:none",
         "border-radius:4px",
         "padding:0",
-        "background:rgba(0,0,0,0.55)",
+        "background:rgba(0,0,0,0.5)",
         "color:#fff",
         "cursor:pointer",
         "box-shadow:0 1px 3px rgba(0,0,0,0.4)",
+        "transition:background 0.15s ease",
     ].join(";");
     button.innerHTML = svg;
+
+    button.addEventListener("mouseenter", () => {
+        button.style.background = "rgba(0,0,0,0.75)";
+    });
+    button.addEventListener("mouseleave", () => {
+        button.style.background = "rgba(0,0,0,0.5)";
+    });
 
     button.addEventListener("mousedown", (event) => {
         event.preventDefault();
